@@ -1,0 +1,372 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+@import "@fontsource/vazirmatn/400.css";
+@import "@fontsource/vazirmatn/500.css";
+@import "@fontsource/vazirmatn/600.css";
+@import "@fontsource/vazirmatn/700.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design system definition.
+ *
+ * The @theme inline block maps CSS custom properties to Tailwind utility
+ * classes (e.g. --color-primary -> bg-primary, text-primary).
+ *
+ * The :root and .dark blocks define the actual color values using oklch.
+ * All colors MUST use oklch format.
+ *
+ * To add a new semantic color:
+ * 1. Add the variable to :root (light value) and .dark (dark value)
+ * 2. Register it in @theme inline as --color-<name>: var(--<name>)
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --font-sans: "Vazirmatn", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/*
+ * Cinematic palette — 60% black, 30% royal purple, 10% gold accent.
+ * Deep noir look, calm and premium.
+ */
+:root {
+  --radius: 0.5rem;
+  --background: oklch(0.08 0.01 300);            /* near-black */
+  --foreground: oklch(0.96 0.02 90);
+  --card: oklch(0.12 0.02 300);
+  --card-foreground: oklch(0.96 0.02 90);
+  --popover: oklch(0.11 0.02 300);
+  --popover-foreground: oklch(0.96 0.02 90);
+  --primary: oklch(0.82 0.15 88);                /* cinematic gold (10%) */
+  --primary-foreground: oklch(0.10 0.01 300);
+  --secondary: oklch(0.32 0.14 300);             /* royal purple (30%) */
+  --secondary-foreground: oklch(0.97 0.02 90);
+  --muted: oklch(0.18 0.03 300);
+  --muted-foreground: oklch(0.72 0.03 90);
+  --accent: oklch(0.45 0.20 300);                /* accent purple */
+  --accent-foreground: oklch(0.97 0.02 90);
+  --destructive: oklch(0.60 0.24 20);
+  --destructive-foreground: oklch(0.98 0.02 90);
+  --border: oklch(0.24 0.04 300);
+  --input: oklch(0.16 0.03 300);
+  --ring: oklch(0.82 0.15 88);
+  --chart-1: oklch(0.82 0.15 88);
+  --chart-2: oklch(0.45 0.20 300);
+  --chart-3: oklch(0.70 0.15 260);
+  --chart-4: oklch(0.55 0.20 320);
+  --chart-5: oklch(0.65 0.10 90);
+  --sidebar: oklch(0.09 0.01 300);
+  --sidebar-foreground: oklch(0.96 0.02 90);
+  --sidebar-primary: oklch(0.82 0.15 88);
+  --sidebar-primary-foreground: oklch(0.10 0.01 300);
+  --sidebar-accent: oklch(0.16 0.03 300);
+  --sidebar-accent-foreground: oklch(0.82 0.15 88);
+  --sidebar-border: oklch(0.22 0.04 300);
+  --sidebar-ring: oklch(0.82 0.15 88);
+}
+
+.dark {
+  --background: oklch(0.06 0.01 300);
+  --foreground: oklch(0.97 0.02 90);
+  --card: oklch(0.10 0.02 300);
+  --card-foreground: oklch(0.97 0.02 90);
+  --popover: oklch(0.09 0.02 300);
+  --popover-foreground: oklch(0.97 0.02 90);
+  --primary: oklch(0.82 0.15 88);
+  --primary-foreground: oklch(0.08 0.01 300);
+  --secondary: oklch(0.28 0.14 300);
+  --secondary-foreground: oklch(0.97 0.02 90);
+  --muted: oklch(0.15 0.03 300);
+  --muted-foreground: oklch(0.70 0.03 90);
+  --accent: oklch(0.42 0.20 300);
+  --accent-foreground: oklch(0.97 0.02 90);
+  --destructive: oklch(0.62 0.24 20);
+  --destructive-foreground: oklch(0.98 0.02 90);
+  --border: oklch(0.22 0.04 300);
+  --input: oklch(0.14 0.03 300);
+  --ring: oklch(0.82 0.15 88);
+  --chart-1: oklch(0.82 0.15 88);
+  --chart-2: oklch(0.45 0.20 300);
+  --chart-3: oklch(0.70 0.15 260);
+  --chart-4: oklch(0.55 0.20 320);
+  --chart-5: oklch(0.65 0.10 90);
+  --sidebar: oklch(0.07 0.01 300);
+  --sidebar-foreground: oklch(0.97 0.02 90);
+  --sidebar-primary: oklch(0.82 0.15 88);
+  --sidebar-primary-foreground: oklch(0.08 0.01 300);
+  --sidebar-accent: oklch(0.14 0.03 300);
+  --sidebar-accent-foreground: oklch(0.82 0.15 88);
+  --sidebar-border: oklch(0.20 0.04 300);
+  --sidebar-ring: oklch(0.82 0.15 88);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv01";
+  }
+
+  html {
+    direction: rtl;
+  }
+
+  /* Tiptap editor content */
+  .ProseMirror {
+    outline: none;
+    min-height: 60vh;
+    padding: 4.5rem 3rem 3rem;
+    line-height: 1.9;
+    scroll-padding-top: 8rem;
+  }
+  .ProseMirror > *:first-child { scroll-margin-top: 8rem; }
+  .ProseMirror h1 { font-size: 2rem; font-weight: 700; margin: 1rem 0 0.5rem; }
+  .ProseMirror h2 { font-size: 1.5rem; font-weight: 700; margin: 0.75rem 0 0.5rem; }
+  .ProseMirror h3 { font-size: 1.25rem; font-weight: 600; margin: 0.5rem 0; }
+  .ProseMirror p { margin: 0.35rem 0; }
+  .ProseMirror ul, .ProseMirror ol { padding-inline-start: 1.5rem; margin: 0.5rem 0; }
+  .ProseMirror ul { list-style: disc; }
+  .ProseMirror ol { list-style: decimal; }
+  .ProseMirror blockquote {
+    border-inline-start: 3px solid var(--color-primary);
+    padding-inline-start: 1rem;
+    color: var(--color-muted-foreground);
+    margin: 0.75rem 0;
+  }
+  .ProseMirror code {
+    background: var(--color-muted);
+    padding: 0.1rem 0.35rem;
+    border-radius: 0.25rem;
+    font-family: ui-monospace, monospace;
+    font-size: 0.9em;
+  }
+  .ProseMirror pre {
+    background: var(--color-muted);
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    direction: ltr;
+    text-align: left;
+  }
+  .ProseMirror table {
+    border-collapse: collapse;
+    margin: 1rem 0;
+    width: 100%;
+  }
+  .ProseMirror th, .ProseMirror td {
+    border: 1px solid var(--color-border);
+    padding: 0.5rem 0.75rem;
+    min-width: 4rem;
+  }
+  .ProseMirror th { background: var(--color-muted); font-weight: 600; }
+  .ProseMirror mark { background: oklch(0.92 0.15 100); padding: 0 0.15rem; border-radius: 0.15rem; }
+  .ProseMirror a { color: var(--color-primary); text-decoration: underline; }
+  .ProseMirror img { max-width: 100%; border-radius: 0.5rem; }
+  .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    color: var(--color-muted-foreground);
+    float: inline-start;
+    pointer-events: none;
+    height: 0;
+  }
+  .ProseMirror ul[data-type="taskList"] { list-style: none; padding: 0; }
+  .ProseMirror ul[data-type="taskList"] li { display: flex; gap: 0.5rem; align-items: baseline; }
+}
+
+/* Slow, gentle wiggle for the pencil-mode icon in the toolbar. */
+@keyframes pencil-wiggle {
+  0%   { transform: rotate(-6deg) translateY(0);   }
+  25%  { transform: rotate(6deg)  translateY(-1px);}
+  50%  { transform: rotate(-4deg) translateY(0);   }
+  75%  { transform: rotate(4deg)  translateY(-1px);}
+  100% { transform: rotate(-6deg) translateY(0);   }
+}
+.pencil-wiggle {
+  animation: pencil-wiggle 2.4s ease-in-out infinite;
+  transform-origin: 50% 90%;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pencil-wiggle { animation: none; }
+}
+
+/* =============================================================
+ * Cinematic ambience layer — subtle static vignette, no motion.
+ * Buttons have no trembling animations; only quiet hover states.
+ * ============================================================= */
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1200px 800px at 15% 10%, color-mix(in oklab, var(--color-secondary) 18%, transparent), transparent 60%),
+    radial-gradient(900px 600px at 85% 90%, color-mix(in oklab, var(--color-primary) 8%, transparent), transparent 65%);
+}
+
+button, [role="button"], .btn, a[data-slot="button"] {
+  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+button:focus-visible, [role="button"]:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.bg-card, [data-slot="card"] {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--color-border) 70%, transparent),
+    0 8px 24px -12px color-mix(in oklab, var(--color-secondary) 40%, transparent);
+}
+
+/* =============================================================
+ * Site loader — progress bar sweep + ferrofluid blob.
+ * ============================================================= */
+@keyframes site-loader-bar {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.site-loader-bar {
+  animation: site-loader-bar 1.2s ease-in-out infinite;
+  width: 60%;
+}
+
+/* Ferrofluid — organic gooey blob using SVG-filter-free CSS. */
+@keyframes ferrofluid-morph {
+  0%,100% { border-radius: 42% 58% 63% 37% / 47% 39% 61% 53%; transform: rotate(0deg) scale(1); }
+  33%     { border-radius: 63% 37% 42% 58% / 39% 63% 37% 61%; transform: rotate(120deg) scale(1.08); }
+  66%     { border-radius: 37% 63% 58% 42% / 61% 47% 53% 39%; transform: rotate(240deg) scale(0.95); }
+}
+.ferrofluid-blob {
+  background:
+    radial-gradient(circle at 30% 30%, color-mix(in oklab, var(--color-primary) 90%, white) 0%, transparent 40%),
+    radial-gradient(circle at 70% 70%, color-mix(in oklab, var(--color-accent) 90%, black) 0%, transparent 55%),
+    linear-gradient(135deg, var(--color-secondary), #000);
+  filter: blur(0.3px) contrast(1.1);
+  animation: ferrofluid-morph 6s ease-in-out infinite;
+  box-shadow: 0 10px 40px -10px color-mix(in oklab, var(--color-primary) 50%, transparent);
+}
+
+/* Ferrofluid ambient backdrop — deep animated color-blob for hero sections. */
+.ferrofluid-bg {
+  position: absolute;
+  inset: -10%;
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(80px) saturate(1.2);
+  opacity: 0.55;
+  background:
+    radial-gradient(600px 400px at 20% 30%, color-mix(in oklab, var(--color-accent) 80%, transparent), transparent 60%),
+    radial-gradient(500px 500px at 80% 70%, color-mix(in oklab, var(--color-primary) 60%, transparent), transparent 60%),
+    radial-gradient(700px 400px at 50% 100%, color-mix(in oklab, var(--color-secondary) 70%, transparent), transparent 60%);
+  animation: ferrofluid-morph 14s ease-in-out infinite;
+}
+
+/* =============================================================
+ * Pixel Card hover — animated pixel-shimmer using conic-gradient.
+ * ============================================================= */
+.pixel-card { position: relative; overflow: hidden; isolation: isolate; }
+.pixel-card-fx {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 300ms ease;
+  background-image:
+    linear-gradient(color-mix(in oklab, var(--color-primary) 30%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklab, var(--color-accent) 30%, transparent) 1px, transparent 1px);
+  background-size: 10px 10px, 10px 10px;
+  mask-image: radial-gradient(circle at var(--px, 50%) var(--py, 50%), black 0%, transparent 70%);
+}
+.pixel-card:hover .pixel-card-fx { opacity: 1; }
+.pixel-card::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(from 0deg, transparent 0deg, var(--color-primary) 40deg, transparent 90deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 300ms ease;
+  animation: pixel-card-spin 4s linear infinite;
+  pointer-events: none;
+}
+.pixel-card:hover::after { opacity: 1; }
+@keyframes pixel-card-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* YouTube embed inside editor */
+.ProseMirror .yt-embed {
+  position: relative;
+  padding-bottom: 56.25%;
+  height: 0;
+  margin: 1rem 0;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+.ProseMirror .yt-embed iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .ferrofluid-blob, .ferrofluid-bg, .pixel-card::after, .site-loader-bar {
+    animation: none;
+  }
+}
+
