@@ -98,7 +98,7 @@ function DocPage() {
     if (editor && content) editor.commands.setContent(content as never, { emitUpdate: false });
   }, [editor, content]);
 
-  async function runAi(mode: "summarize" | "dedupe" | "custom") {
+  async function runAi(mode: "summarize" | "dedupe" | "rewrite" | "custom") {
     if (!editor) return;
     const { from, to, empty } = editor.state.selection;
     const text = empty ? editor.getText() : editor.state.doc.textBetween(from, to, "\n");

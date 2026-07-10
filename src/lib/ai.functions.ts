@@ -7,7 +7,7 @@ const MODEL = "google/gemini-3-flash-preview";
 
 const InputSchema = z.object({
   text: z.string().min(1).max(20000),
-  mode: z.enum(["summarize", "dedupe", "custom"]),
+  mode: z.enum(["summarize", "dedupe", "rewrite", "custom"]),
   instruction: z.string().max(1000).optional(),
 });
 
@@ -17,6 +17,8 @@ function promptFor(mode: string, text: string, instruction?: string) {
       return `متن زیر را به فارسی روان و ساختاریافته خلاصه کن. نکات کلیدی را حفظ کن.\n\n${text}`;
     case "dedupe":
       return `در متن زیر جمله‌ها و عبارت‌های تکراری یا هم‌معنی را حذف کن و متن نهایی را یکپارچه و روان بازنویسی کن. فقط متن نهایی را برگردان.\n\n${text}`;
+    case "rewrite":
+      return `متن زیر را به فارسی روان و حرفه‌ای بازنویسی کن. ساختار مناسب پاراگراف‌بندی، سربرگ‌ها (Heading سطح ۱ و ۲) و در صورت نیاز فهرست‌ها را اعمال کن. از قالب Markdown استفاده کن (# برای عنوان اصلی، ## برای زیرعنوان، - برای فهرست). فقط خروجی نهایی را برگردان.\n\n${text}`;
     case "custom":
       return `دستور کاربر: ${instruction || "متن را بهبود بده"}\n\nمتن:\n${text}\n\nفقط متن نهایی را بدون توضیح برگردان.`;
   }

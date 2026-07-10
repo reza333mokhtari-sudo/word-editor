@@ -17,7 +17,7 @@ function DockedPlayerInner() {
   return (
     <div
       className="fixed bottom-4 left-4 z-[60] w-[min(360px,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-black/85 backdrop-blur-xl shadow-2xl shadow-black/40 text-white overflow-hidden"
-      dir="rtl"
+      dir="ltr"
       style={{ willChange: "transform" }}
     >
       <div

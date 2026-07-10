@@ -373,7 +373,7 @@ function MusicPage() {
       </div>
 
       {/* Bottom player bar */}
-      <div className="fixed bottom-0 inset-x-0 z-40 border-t border-white/10 bg-black/80 backdrop-blur-xl">
+      <div dir="ltr" className="fixed bottom-0 inset-x-0 z-40 border-t border-white/10 bg-black/80 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto grid grid-cols-3 items-center gap-4 px-4 py-3">
           <div className="flex items-center gap-3 min-w-0">
             <img src={track.cover} alt="" className="h-12 w-12 rounded-md object-cover shadow" />

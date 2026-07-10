@@ -8,7 +8,9 @@ import { toast } from "sonner";
 import {
   MousePointer2, Move as MoveIcon, Pen, Square, Circle, Minus, Type as TypeIcon, Image as ImageIcon,
   Trash2, Undo2, Redo2, Download, Palette, Layers, Copy, ArrowUp, ArrowDown, Lock, Unlock, Eye, EyeOff,
+  Grid3x3, Hexagon, Wand2, Box, Camera, ZoomIn, ZoomOut, Maximize2,
 } from "lucide-react";
+import { Sketch3DPreview } from "./Sketch3DPreview";
 
 export type SketchShape =
   | ({ id: string; type: "path"; d: string; stroke: string; strokeWidth: number; fill?: string } & ShapeCommon)
@@ -32,7 +34,7 @@ export function isSketchDoc(v: unknown): v is SketchDoc {
   return !!v && typeof v === "object" && (v as { kind?: string }).kind === "sketch";
 }
 
-type Tool = "select" | "move" | "pen" | "rect" | "ellipse" | "line" | "text";
+type Tool = "select" | "move" | "pen" | "rect" | "ellipse" | "line" | "text" | "wall" | "room" | "cave";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -57,6 +59,12 @@ export function SketchEditor({ doc, onChange, title }: Props) {
   const [history, setHistory] = useState<SketchDoc[]>([]);
   const [future, setFuture] = useState<SketchDoc[]>([]);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const [view, setView] = useState({ x: -200, y: -200, zoom: 1 });
+  const [gridType, setGridType] = useState<"none" | "square" | "hex">("square");
+  const [gridSize, setGridSize] = useState(48);
+  const [show3D, setShow3D] = useState(false);
+  const panRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
 
   // in-progress drawing state
   const drawingRef = useRef<{ startX: number; startY: number; points?: [number, number][]; id?: string } | null>(null);
@@ -97,7 +105,7 @@ export function SketchEditor({ doc, onChange, title }: Props) {
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedId) { e.preventDefault(); commit({ ...doc, shapes: doc.shapes.filter((s) => s.id !== selectedId) }); setSelectedId(null); }
       }
-      const map: Record<string, Tool> = { v: "select", p: "pen", r: "rect", o: "ellipse", l: "line", t: "text" };
+      const map: Record<string, Tool> = { v: "select", p: "pen", r: "rect", o: "ellipse", l: "line", t: "text", w: "wall", c: "cave" };
       if (map[e.key.toLowerCase()]) { setTool(map[e.key.toLowerCase()]); }
     if (e.key.toLowerCase() === "m") { setTool("move"); }
     };
@@ -115,6 +123,8 @@ export function SketchEditor({ doc, onChange, title }: Props) {
     return [Math.round(p.x), Math.round(p.y)];
   }
 
+  function snap(v: number) { return gridType === "none" ? v : Math.round(v / gridSize) * gridSize; }
+
   function smoothPath(points: [number, number][]) {
     if (points.length < 2) return "";
     let d = `M ${points[0][0]} ${points[0][1]}`;
@@ -129,7 +139,29 @@ export function SketchEditor({ doc, onChange, title }: Props) {
     return d;
   }
 
+  // Rough/organic cave-brush path — jitters each point for a hand-drawn look.
+  function roughPath(points: [number, number][]) {
+    if (points.length < 2) return "";
+    const j = (v: number) => v + (Math.random() - 0.5) * 3;
+    let d = `M ${j(points[0][0])} ${j(points[0][1])}`;
+    for (let i = 1; i < points.length - 1; i++) {
+      const [x1, y1] = points[i];
+      const [x2, y2] = points[i + 1];
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+      d += ` Q ${j(x1)} ${j(y1)} ${j(mx)} ${j(my)}`;
+    }
+    const [lx, ly] = points[points.length - 1];
+    d += ` L ${j(lx)} ${j(ly)}`;
+    return d;
+  }
+
   function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
+    // Middle-mouse or space+drag = pan
+    if (e.button === 1 || (e.button === 0 && (e.shiftKey && (tool === "select" || tool === "move")))) {
+      panRef.current = { sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y };
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+      return;
+    }
     if (e.button !== 0) return;
     const [x, y] = pointerCoords(e);
     (e.target as Element).setPointerCapture?.(e.pointerId);
@@ -143,24 +175,30 @@ export function SketchEditor({ doc, onChange, title }: Props) {
     if (tool === "text") {
       const value = prompt("متن:", "متن نمونه");
       if (!value) return;
-      const s: SketchShape = { id: uid(), type: "text", x, y, text: value, fontSize, fill: stroke };
+      const s: SketchShape = { id: uid(), type: "text", x: snap(x), y: snap(y), text: value, fontSize, fill: stroke };
       commit({ ...doc, shapes: [...doc.shapes, s] });
       setSelectedId(s.id);
       setTool("select");
       return;
     }
-    if (tool === "pen") {
+    if (tool === "pen" || tool === "cave") {
       drawingRef.current = { startX: x, startY: y, points: [[x, y]], id: uid() };
-      setDraft({ id: drawingRef.current.id!, type: "path", d: `M ${x} ${y}`, stroke, strokeWidth });
+      setDraft({ id: drawingRef.current.id!, type: "path", d: `M ${x} ${y}`, stroke, strokeWidth: tool === "cave" ? Math.max(strokeWidth, 4) : strokeWidth });
       return;
     }
-    drawingRef.current = { startX: x, startY: y, id: uid() };
-    if (tool === "rect") setDraft({ id: drawingRef.current.id!, type: "rect", x, y, w: 0, h: 0, radius: 6, stroke, strokeWidth, fill });
+    const sx = snap(x), sy = snap(y);
+    drawingRef.current = { startX: sx, startY: sy, id: uid() };
+    if (tool === "rect" || tool === "room") setDraft({ id: drawingRef.current.id!, type: "rect", x: sx, y: sy, w: 0, h: 0, radius: tool === "room" ? 0 : 6, stroke, strokeWidth: tool === "room" ? Math.max(strokeWidth, 3) : strokeWidth, fill: tool === "room" ? "#e8dbb3" : fill });
     else if (tool === "ellipse") setDraft({ id: drawingRef.current.id!, type: "ellipse", x, y, w: 0, h: 0, stroke, strokeWidth, fill });
-    else if (tool === "line") setDraft({ id: drawingRef.current.id!, type: "line", x1: x, y1: y, x2: x, y2: y, stroke, strokeWidth });
+    else if (tool === "line" || tool === "wall") setDraft({ id: drawingRef.current.id!, type: "line", x1: sx, y1: sy, x2: sx, y2: sy, stroke, strokeWidth: tool === "wall" ? Math.max(strokeWidth, 5) : strokeWidth });
   }
 
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    if (panRef.current) {
+      const p = panRef.current;
+      setView((v) => ({ ...v, x: p.ox - (e.clientX - p.sx) / v.zoom, y: p.oy - (e.clientY - p.sy) / v.zoom }));
+      return;
+    }
     const [x, y] = pointerCoords(e);
     if (dragRef.current) {
       const d = dragRef.current;
@@ -170,19 +208,23 @@ export function SketchEditor({ doc, onChange, title }: Props) {
     }
     if (!drawingRef.current) return;
     const st = drawingRef.current;
-    if (tool === "pen" && st.points) {
+    if ((tool === "pen" || tool === "cave") && st.points) {
       st.points.push([x, y]);
-      setDraft({ id: st.id!, type: "path", d: smoothPath(st.points), stroke, strokeWidth });
-    } else if (tool === "rect") {
-      setDraft({ id: st.id!, type: "rect", x: Math.min(st.startX, x), y: Math.min(st.startY, y), w: Math.abs(x - st.startX), h: Math.abs(y - st.startY), radius: 6, stroke, strokeWidth, fill });
+      const d = tool === "cave" ? roughPath(st.points) : smoothPath(st.points);
+      setDraft({ id: st.id!, type: "path", d, stroke, strokeWidth: tool === "cave" ? Math.max(strokeWidth, 4) : strokeWidth });
+    } else if (tool === "rect" || tool === "room") {
+      const nx = snap(x), ny = snap(y);
+      setDraft({ id: st.id!, type: "rect", x: Math.min(st.startX, nx), y: Math.min(st.startY, ny), w: Math.abs(nx - st.startX), h: Math.abs(ny - st.startY), radius: tool === "room" ? 0 : 6, stroke, strokeWidth: tool === "room" ? Math.max(strokeWidth, 3) : strokeWidth, fill: tool === "room" ? "#e8dbb3" : fill });
     } else if (tool === "ellipse") {
       setDraft({ id: st.id!, type: "ellipse", x: Math.min(st.startX, x), y: Math.min(st.startY, y), w: Math.abs(x - st.startX), h: Math.abs(y - st.startY), stroke, strokeWidth, fill });
-    } else if (tool === "line") {
-      setDraft({ id: st.id!, type: "line", x1: st.startX, y1: st.startY, x2: x, y2: y, stroke, strokeWidth });
+    } else if (tool === "line" || tool === "wall") {
+      const nx = snap(x), ny = snap(y);
+      setDraft({ id: st.id!, type: "line", x1: st.startX, y1: st.startY, x2: nx, y2: ny, stroke, strokeWidth: tool === "wall" ? Math.max(strokeWidth, 5) : strokeWidth });
     }
   }
 
   function onPointerUp() {
+    if (panRef.current) { panRef.current = null; return; }
     if (dragRef.current) { dragRef.current = null; commit(doc); return; }
     if (!drawingRef.current || !draft) { drawingRef.current = null; return; }
     const s = draft;
@@ -195,9 +237,54 @@ export function SketchEditor({ doc, onChange, title }: Props) {
     if (!isZero) commit({ ...doc, shapes: [...doc.shapes, s] });
     drawingRef.current = null;
     setDraft(null);
-    if (tool !== "pen") setTool("select");
+    if (tool !== "pen" && tool !== "cave" && tool !== "wall" && tool !== "room") setTool("select");
     if (!isZero) setSelectedId(s.id);
   }
+
+  function onWheel(e: React.WheelEvent) {
+    if (!e.ctrlKey && !e.metaKey && Math.abs(e.deltaY) < 40) return;
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    setView((v) => ({ ...v, zoom: Math.max(0.1, Math.min(6, v.zoom * factor)) }));
+  }
+
+  function generateDungeon() {
+    // Simple BSP dungeon: split area, add rooms + corridor walls.
+    const W = 1600, H = 1000, MIN = 220;
+    type R = { x: number; y: number; w: number; h: number };
+    const rooms: R[] = [];
+    function split(x: number, y: number, w: number, h: number, depth: number) {
+      if (depth === 0 || (w < MIN * 2 && h < MIN * 2)) {
+        const pad = 30 + Math.random() * 40;
+        rooms.push({ x: x + pad, y: y + pad, w: Math.max(80, w - pad * 2), h: Math.max(80, h - pad * 2) });
+        return;
+      }
+      const horiz = w < h ? true : w > h ? false : Math.random() < 0.5;
+      if (horiz) {
+        const s = h * (0.35 + Math.random() * 0.3);
+        split(x, y, w, s, depth - 1); split(x, y + s, w, h - s, depth - 1);
+      } else {
+        const s = w * (0.35 + Math.random() * 0.3);
+        split(x, y, s, h, depth - 1); split(x + s, y, w - s, h, depth - 1);
+      }
+    }
+    split(60, 60, W - 120, H - 120, 4);
+    const shapes: SketchShape[] = [];
+    rooms.forEach((r) => {
+      shapes.push({ id: uid(), type: "rect", x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h), radius: 0, stroke: "#3a2a1a", strokeWidth: 4, fill: "#e8dbb3" });
+    });
+    // corridors between consecutive room centers
+    for (let i = 1; i < rooms.length; i++) {
+      const a = rooms[i - 1], b = rooms[i];
+      const ax = a.x + a.w / 2, ay = a.y + a.h / 2, bx = b.x + b.w / 2, by = b.y + b.h / 2;
+      shapes.push({ id: uid(), type: "line", x1: Math.round(ax), y1: Math.round(ay), x2: Math.round(bx), y2: Math.round(ay), stroke: "#3a2a1a", strokeWidth: 6 });
+      shapes.push({ id: uid(), type: "line", x1: Math.round(bx), y1: Math.round(ay), x2: Math.round(bx), y2: Math.round(by), stroke: "#3a2a1a", strokeWidth: 6 });
+    }
+    commit({ ...doc, shapes: [...doc.shapes, ...shapes] });
+    toast.success(`سیاه‌چال با ${rooms.length} اتاق ساخته شد`);
+  }
+
+  function resetView() { setView({ x: -200, y: -200, zoom: 1 }); }
 
   function updateSelected(patch: Partial<SketchShape>) {
     if (!selectedId) return;
@@ -274,6 +361,9 @@ export function SketchEditor({ doc, onChange, title }: Props) {
     { id: "select", icon: MousePointer2, label: "انتخاب", hint: "V" },
     { id: "move", icon: MoveIcon, label: "جابجایی", hint: "M" },
     { id: "pen", icon: Pen, label: "قلم", hint: "P" },
+    { id: "wall", icon: Minus, label: "دیوار", hint: "W" },
+    { id: "room", icon: Square, label: "اتاق", hint: "" },
+    { id: "cave", icon: Pen, label: "قلم غار", hint: "C" },
     { id: "rect", icon: Square, label: "مستطیل", hint: "R" },
     { id: "ellipse", icon: Circle, label: "بیضی", hint: "O" },
     { id: "line", icon: Minus, label: "خط", hint: "L" },
@@ -370,25 +460,68 @@ export function SketchEditor({ doc, onChange, title }: Props) {
           )}
           <Button variant="outline" size="sm" onClick={exportSvg}><Download className="h-4 w-4 ms-1" />SVG</Button>
           <Button variant="outline" size="sm" onClick={exportPng}><Download className="h-4 w-4 ms-1" />PNG</Button>
+          <span className="w-px h-6 bg-border mx-1" />
+          <Button variant="ghost" size="sm" onClick={() => setGridType(gridType === "square" ? "hex" : gridType === "hex" ? "none" : "square")} title="گرید">
+            {gridType === "hex" ? <Hexagon className="h-4 w-4" /> : <Grid3x3 className="h-4 w-4" />}
+            <span className="ms-1 text-[10px]">{gridType}</span>
+          </Button>
+          <Button variant="ghost" size="sm" onClick={generateDungeon} title="ساخت سیاه‌چال (BSP)">
+            <Wand2 className="h-4 w-4 ms-1" />سیاه‌چال
+          </Button>
+          <Button variant={show3D ? "default" : "outline"} size="sm" onClick={() => setShow3D(true)} title="نمای سه‌بعدی">
+            <Box className="h-4 w-4 ms-1" />3D
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setView((v) => ({ ...v, zoom: Math.min(6, v.zoom * 1.2) }))}><ZoomIn className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="sm" onClick={() => setView((v) => ({ ...v, zoom: Math.max(0.1, v.zoom / 1.2) }))}><ZoomOut className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="sm" onClick={resetView} title="ریست دید"><Maximize2 className="h-4 w-4" /></Button>
+          <span className="text-[10px] text-muted-foreground tabular-nums w-10 text-center">{Math.round(view.zoom * 100)}%</span>
         </div>
 
         {/* canvas viewport */}
-        <div className="flex-1 overflow-auto bg-muted/30 p-6">
-          <div className="mx-auto shadow-xl" style={{ width: doc.width, height: doc.height, background: doc.background }}>
-            <svg
-              ref={svgRef}
-              width={doc.width}
-              height={doc.height}
-              viewBox={`0 0 ${doc.width} ${doc.height}`}
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onPointerLeave={onPointerUp}
-              style={{ cursor: tool === "select" ? "default" : "crosshair", touchAction: "none" }}
+        <div
+          ref={viewportRef}
+          className="flex-1 overflow-hidden bg-muted/30 relative"
+          style={{ background: doc.background }}
+          onWheel={onWheel}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <svg
+            ref={svgRef}
+            width="100%"
+            height="100%"
+            viewBox={`${view.x} ${view.y} ${(viewportRef.current?.clientWidth ?? 1200) / view.zoom} ${(viewportRef.current?.clientHeight ?? 800) / view.zoom}`}
+            preserveAspectRatio="xMidYMid meet"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerLeave={onPointerUp}
+            style={{ cursor: panRef.current ? "grabbing" : tool === "select" ? "default" : "crosshair", touchAction: "none", direction: "ltr" }}
+          >
+            <defs>
+              <pattern id="sq-grid" width={gridSize} height={gridSize} patternUnits="userSpaceOnUse">
+                <path d={`M ${gridSize} 0 L 0 0 0 ${gridSize}`} fill="none" stroke="rgba(0,0,0,0.08)" strokeWidth="1" />
+              </pattern>
+              <pattern id="hex-grid" width={gridSize * 1.732} height={gridSize * 1.5} patternUnits="userSpaceOnUse">
+                <path d={`M ${gridSize * 0.866} 0 L ${gridSize * 1.732} ${gridSize * 0.5} L ${gridSize * 1.732} ${gridSize * 1.5} L ${gridSize * 0.866} ${gridSize * 2} L 0 ${gridSize * 1.5} L 0 ${gridSize * 0.5} Z`} fill="none" stroke="rgba(0,0,0,0.1)" strokeWidth="1" />
+              </pattern>
+            </defs>
+            {gridType !== "none" && (
+              <rect x={-100000} y={-100000} width={200000} height={200000} fill={`url(#${gridType === "hex" ? "hex-grid" : "sq-grid"})`} pointerEvents="none" />
+            )}
+            {visibleShapes.map((s) => renderShape(s, selectedId, setSelectedId, tool === "select" || tool === "move", startDragShape))}
+            {draft && renderShape(draft, null, () => {}, false, () => {})}
+          </svg>
+          {show3D && (
+            <button
+              onClick={() => setShow3D(true)}
+              className="absolute top-3 right-3 rounded-full bg-primary text-primary-foreground h-10 w-10 flex items-center justify-center shadow-lg"
+              title="حالت سه‌بعدی فعال است"
             >
-              {visibleShapes.map((s) => renderShape(s, selectedId, setSelectedId, tool === "select" || tool === "move", startDragShape))}
-              {draft && renderShape(draft, null, () => {}, false, () => {})}
-            </svg>
+              <Camera className="h-5 w-5" />
+            </button>
+          )}
+          <div className="absolute bottom-2 left-2 rounded-md bg-background/80 backdrop-blur px-2 py-1 text-[10px] text-muted-foreground border" dir="ltr">
+            MMB / Shift+Drag = Pan · Ctrl+Wheel = Zoom · بی‌نهایت
           </div>
         </div>
       </div>
@@ -495,6 +628,7 @@ export function SketchEditor({ doc, onChange, title }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {show3D && <Sketch3DPreview doc={doc} onClose={() => setShow3D(false)} />}
     </div>
   );
 }

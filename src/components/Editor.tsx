@@ -31,6 +31,7 @@ import {
 import type { PenType } from "@/components/DrawOverlay";
 import { useCallback, useEffect, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { DocStatsBadge } from "@/components/DocStatsBadge";
 
@@ -78,6 +79,44 @@ function Btn({ active, onClick, children, title, disabled }: { active?: boolean;
   );
 }
 
+function AiDropdown({ onAi, aiLoading }: { onAi: (mode: "summarize" | "dedupe" | "rewrite" | "custom") => void; aiLoading: boolean }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={aiLoading}
+          onMouseDown={(e) => e.preventDefault()}
+          className="h-8 gap-1.5 px-2 text-primary hover:text-primary"
+          title="هوش مصنوعی"
+        >
+          {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          <span className="text-xs">هوش مصنوعی</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56">
+        <DropdownMenuLabel>عملیات AI</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => onAi("summarize")}>
+          <Sparkles className="h-4 w-4 me-2" /> خلاصه‌سازی
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onAi("dedupe")}>
+          <Wand2 className="h-4 w-4 me-2" /> حذف جملات تکراری
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onAi("rewrite")}>
+          <BookOpen className="h-4 w-4 me-2" /> بازنویسی (پاراگراف‌بندی و سربرگ)
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => onAi("custom")}>
+          <PenTool className="h-4 w-4 me-2" /> دستور سفارشی…
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export type PencilState = {
   active: boolean;
   color: string;
@@ -106,7 +145,7 @@ const PEN_TYPES: { value: PenType; label: string; Icon: React.ComponentType<{ cl
 
 export type RibbonTab = "home" | "insert" | "design" | "layout" | "review" | "view";
 
-export function EditorToolbar({ editor, onAi, aiLoading, pencil, onToolUse, toolUses = 0, fullscreen, onToggleFullscreen }: { editor: Editor | null; onAi: (mode: "summarize" | "dedupe" | "custom") => void; aiLoading: boolean; pencil?: PencilState; onToolUse?: () => void; toolUses?: number; fullscreen?: boolean; onToggleFullscreen?: () => void }) {
+export function EditorToolbar({ editor, onAi, aiLoading, pencil, onToolUse, toolUses = 0, fullscreen, onToggleFullscreen }: { editor: Editor | null; onAi: (mode: "summarize" | "dedupe" | "rewrite" | "custom") => void; aiLoading: boolean; pencil?: PencilState; onToolUse?: () => void; toolUses?: number; fullscreen?: boolean; onToggleFullscreen?: () => void }) {
   const [textDir, setTextDir] = useState<"rtl" | "ltr">("rtl");
   const [tab, setTab] = useState<RibbonTab>("home");
   const runTextCommand = useCallback((command: (chain: ReturnType<Editor["chain"]>) => ReturnType<Editor["chain"]>) => {
@@ -321,11 +360,7 @@ export function EditorToolbar({ editor, onAi, aiLoading, pencil, onToolUse, tool
       <Btn title="جدول" onClick={insertTable}><TableIcon className="h-4 w-4" /></Btn>
 
       <Separator orientation="vertical" className="h-6 mx-1" />
-      <Btn title={aiLoading ? "در حال پردازش…" : "خلاصه‌سازی با هوش مصنوعی"} disabled={aiLoading} onClick={() => onAi("summarize")}>
-        {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-      </Btn>
-      <Btn title="حذف تکرار با هوش مصنوعی" disabled={aiLoading} onClick={() => onAi("dedupe")}><Wand2 className="h-4 w-4" /></Btn>
-      <Btn title="دستور سفارشی هوش مصنوعی" disabled={aiLoading} onClick={() => onAi("custom")}><PenTool className="h-4 w-4" /></Btn>
+      <AiDropdown onAi={onAi} aiLoading={aiLoading} />
 
       {pencil ? (
         <>
@@ -446,11 +481,7 @@ export function EditorToolbar({ editor, onAi, aiLoading, pencil, onToolUse, tool
         </Select>
       </>)}
       {tab === "review" && (<>
-        <Btn title="خلاصه‌سازی" disabled={aiLoading} onClick={() => onAi("summarize")}>
-          {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-        </Btn>
-        <Btn title="حذف تکرار" disabled={aiLoading} onClick={() => onAi("dedupe")}><Wand2 className="h-4 w-4" /></Btn>
-        <Btn title="دستور سفارشی" disabled={aiLoading} onClick={() => onAi("custom")}><PenTool className="h-4 w-4" /></Btn>
+        <AiDropdown onAi={onAi} aiLoading={aiLoading} />
         <Separator orientation="vertical" className="h-6 mx-1" />
         <Btn title="یافتن (Ctrl+F)" onClick={() => document.execCommand("find")}><Search className="h-4 w-4" /></Btn>
         <DocStatsBadge editor={editor} toolUses={toolUses} />
