@@ -9,6 +9,9 @@ import {
   MousePointer2, Move as MoveIcon, Pen, Square, Circle, Minus, Type as TypeIcon, Image as ImageIcon,
   Trash2, Undo2, Redo2, Download, Palette, Layers, Copy, ArrowUp, ArrowDown, Lock, Unlock, Eye, EyeOff,
   Grid3x3, Hexagon, Wand2, Box, Camera, ZoomIn, ZoomOut, Maximize2,
+  DoorClosed, DoorOpen, KeyRound, Fence, ChevronsUp, ChevronsDown, RotateCw,
+  Columns3, Gem, Skull, AlertTriangle, Compass, Ruler, Hash, Printer, Sparkle,
+  BrickWall, Flame, Droplets, Mountain, Wind, CloudLightning, Waves, Tornado,
 } from "lucide-react";
 import { Sketch3DPreview } from "./Sketch3DPreview";
 
@@ -17,7 +20,24 @@ export type SketchShape =
   | ({ id: string; type: "rect"; x: number; y: number; w: number; h: number; radius: number; stroke: string; strokeWidth: number; fill: string } & ShapeCommon)
   | ({ id: string; type: "ellipse"; x: number; y: number; w: number; h: number; stroke: string; strokeWidth: number; fill: string } & ShapeCommon)
   | ({ id: string; type: "line"; x1: number; y1: number; x2: number; y2: number; stroke: string; strokeWidth: number } & ShapeCommon)
-  | ({ id: string; type: "text"; x: number; y: number; text: string; fontSize: number; fill: string } & ShapeCommon);
+  | ({ id: string; type: "text"; x: number; y: number; text: string; fontSize: number; fill: string } & ShapeCommon)
+  | ({ id: string; type: "stamp"; kind: StampKind; x: number; y: number; size: number; color: string; label?: string } & ShapeCommon);
+
+export type StampKind =
+  | "door" | "secret-door" | "locked-door" | "portcullis"
+  | "stairs-up" | "stairs-down" | "spiral-stairs"
+  | "pillar" | "treasure" | "monster" | "trap"
+  | "compass" | "scale-bar"
+  // 5 doors (extra models)
+  | "door-iron" | "door-arched" | "door-double" | "door-hidden-arch" | "door-vault"
+  // 5 walls
+  | "wall-stone" | "wall-brick" | "wall-rubble" | "wall-thick" | "wall-broken"
+  // 5 lakes / water bodies
+  | "lake-small" | "lake-large" | "pond" | "river" | "waterfall"
+  // 5 bridges (wood + rock)
+  | "bridge-wood" | "bridge-rock" | "bridge-rope" | "bridge-arch" | "bridge-broken"
+  // 5 elementals
+  | "elem-fire" | "elem-water" | "elem-earth" | "elem-air" | "elem-storm";
 
 type ShapeCommon = {
   opacity?: number; locked?: boolean; hidden?: boolean; name?: string;
@@ -34,14 +54,82 @@ export function isSketchDoc(v: unknown): v is SketchDoc {
   return !!v && typeof v === "object" && (v as { kind?: string }).kind === "sketch";
 }
 
-type Tool = "select" | "move" | "pen" | "rect" | "ellipse" | "line" | "text" | "wall" | "room" | "cave";
+type Tool = "select" | "move" | "pen" | "rect" | "ellipse" | "line" | "text" | "wall" | "room" | "cave" | "stamp";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 function shapeName(s: SketchShape) {
   if (s.name) return s.name;
-  return { path: "طرح", rect: "مستطیل", ellipse: "بیضی", line: "خط", text: "متن" }[s.type];
+  const map: Record<string, string> = { path: "طرح", rect: "مستطیل", ellipse: "بیضی", line: "خط", text: "متن", stamp: "نماد" };
+  return map[s.type] ?? s.type;
 }
+
+type StampGroup = "doors" | "walls" | "lakes" | "bridges" | "elementals" | "features" | "map";
+const STAMPS: { kind: StampKind; label: string; group: StampGroup; Icon: React.ComponentType<{ className?: string }> }[] = [
+  // Doors — 5 base + 5 extra models
+  { kind: "door", label: "در ساده", group: "doors", Icon: DoorClosed },
+  { kind: "secret-door", label: "در مخفی", group: "doors", Icon: DoorOpen },
+  { kind: "locked-door", label: "در قفل", group: "doors", Icon: KeyRound },
+  { kind: "portcullis", label: "دروازه شبکه‌ای", group: "doors", Icon: Fence },
+  { kind: "door-iron", label: "در آهنی", group: "doors", Icon: DoorClosed },
+  { kind: "door-arched", label: "در قوسی", group: "doors", Icon: DoorOpen },
+  { kind: "door-double", label: "در دولنگه", group: "doors", Icon: DoorOpen },
+  { kind: "door-hidden-arch", label: "طاق مخفی", group: "doors", Icon: DoorOpen },
+  { kind: "door-vault", label: "در گاوصندوق", group: "doors", Icon: KeyRound },
+  // Walls — 5 models
+  { kind: "wall-stone", label: "دیوار سنگی", group: "walls", Icon: BrickWall },
+  { kind: "wall-brick", label: "دیوار آجری", group: "walls", Icon: BrickWall },
+  { kind: "wall-rubble", label: "آوار", group: "walls", Icon: BrickWall },
+  { kind: "wall-thick", label: "دیوار قطور", group: "walls", Icon: BrickWall },
+  { kind: "wall-broken", label: "دیوار شکسته", group: "walls", Icon: BrickWall },
+  // Lakes — 5 water bodies
+  { kind: "lake-small", label: "دریاچه کوچک", group: "lakes", Icon: Droplets },
+  { kind: "lake-large", label: "دریاچه بزرگ", group: "lakes", Icon: Waves },
+  { kind: "pond", label: "برکه", group: "lakes", Icon: Droplets },
+  { kind: "river", label: "رودخانه", group: "lakes", Icon: Waves },
+  { kind: "waterfall", label: "آبشار", group: "lakes", Icon: Waves },
+  // Bridges — 5 models (wood + rock)
+  { kind: "bridge-wood", label: "پل چوبی", group: "bridges", Icon: Minus },
+  { kind: "bridge-rock", label: "پل سنگی", group: "bridges", Icon: Mountain },
+  { kind: "bridge-rope", label: "پل طنابی", group: "bridges", Icon: Minus },
+  { kind: "bridge-arch", label: "پل طاقی", group: "bridges", Icon: Mountain },
+  { kind: "bridge-broken", label: "پل شکسته", group: "bridges", Icon: Minus },
+  // Elementals — fire/water/earth/air/storm
+  { kind: "elem-fire", label: "آتش", group: "elementals", Icon: Flame },
+  { kind: "elem-water", label: "آب", group: "elementals", Icon: Droplets },
+  { kind: "elem-earth", label: "خاک", group: "elementals", Icon: Mountain },
+  { kind: "elem-air", label: "باد", group: "elementals", Icon: Wind },
+  { kind: "elem-storm", label: "طوفان", group: "elementals", Icon: CloudLightning },
+  // Features
+  { kind: "stairs-up", label: "پله بالا", group: "features", Icon: ChevronsUp },
+  { kind: "stairs-down", label: "پله پایین", group: "features", Icon: ChevronsDown },
+  { kind: "spiral-stairs", label: "پله مارپیچ", group: "features", Icon: RotateCw },
+  { kind: "pillar", label: "ستون", group: "features", Icon: Columns3 },
+  { kind: "treasure", label: "گنج", group: "features", Icon: Gem },
+  { kind: "monster", label: "هیولا", group: "features", Icon: Skull },
+  { kind: "trap", label: "تله", group: "features", Icon: AlertTriangle },
+  // Map annotations
+  { kind: "compass", label: "قطب‌نما", group: "map", Icon: Compass },
+  { kind: "scale-bar", label: "مقیاس", group: "map", Icon: Ruler },
+];
+
+const STAMP_GROUP_LABEL: Record<StampGroup, string> = {
+  doors: "درها",
+  walls: "دیوارها",
+  lakes: "دریاچه و آب",
+  bridges: "پل‌ها",
+  elementals: "عناصر",
+  features: "ویژگی‌ها",
+  map: "نقشه",
+};
+
+type Theme = { id: string; label: string; bg: string; stroke: string; roomFill: string; hatched: boolean };
+const THEMES: Theme[] = [
+  { id: "classic",   label: "کلاسیک B&W",   bg: "#ffffff", stroke: "#111111", roomFill: "#f4f1e8", hatched: true },
+  { id: "sepia",     label: "سپیا وینتیج",  bg: "#f6ecd2", stroke: "#3a2a1a", roomFill: "#e8dbb3", hatched: true },
+  { id: "blueprint", label: "نقشه آبی",     bg: "#0e3a68", stroke: "#e8f4ff", roomFill: "#134a80", hatched: false },
+  { id: "parchment", label: "پوست‌نبشته",    bg: "#efe3c3", stroke: "#4a2f1a", roomFill: "#dcc99a", hatched: true },
+];
 
 type Props = {
   doc: SketchDoc;
@@ -64,6 +152,9 @@ export function SketchEditor({ doc, onChange, title }: Props) {
   const [gridType, setGridType] = useState<"none" | "square" | "hex">("square");
   const [gridSize, setGridSize] = useState(48);
   const [show3D, setShow3D] = useState(false);
+  const [stampKind, setStampKind] = useState<StampKind>("door");
+  const [stampSize, setStampSize] = useState(48);
+  const [hatched, setHatched] = useState(true);
   const panRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
 
   // in-progress drawing state
@@ -108,6 +199,7 @@ export function SketchEditor({ doc, onChange, title }: Props) {
       const map: Record<string, Tool> = { v: "select", p: "pen", r: "rect", o: "ellipse", l: "line", t: "text", w: "wall", c: "cave" };
       if (map[e.key.toLowerCase()]) { setTool(map[e.key.toLowerCase()]); }
     if (e.key.toLowerCase() === "m") { setTool("move"); }
+    if (e.key.toLowerCase() === "s") { setTool("stamp"); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -179,6 +271,12 @@ export function SketchEditor({ doc, onChange, title }: Props) {
       commit({ ...doc, shapes: [...doc.shapes, s] });
       setSelectedId(s.id);
       setTool("select");
+      return;
+    }
+    if (tool === "stamp") {
+      const s: SketchShape = { id: uid(), type: "stamp", kind: stampKind, x: snap(x), y: snap(y), size: stampSize, color: stroke };
+      commit({ ...doc, shapes: [...doc.shapes, s] });
+      setSelectedId(s.id);
       return;
     }
     if (tool === "pen" || tool === "cave") {
@@ -286,6 +384,55 @@ export function SketchEditor({ doc, onChange, title }: Props) {
 
   function resetView() { setView({ x: -200, y: -200, zoom: 1 }); }
 
+  function applyTheme(t: Theme) {
+    setStroke(t.stroke);
+    setFill(t.roomFill);
+    setHatched(t.hatched);
+    commit({
+      ...doc,
+      background: t.bg,
+      shapes: doc.shapes.map((s) => {
+        if (s.type === "rect") return { ...s, stroke: t.stroke, fill: t.roomFill } as SketchShape;
+        if (s.type === "line" || s.type === "path") return { ...s, stroke: t.stroke } as SketchShape;
+        return s;
+      }),
+    });
+    toast.success(`تم «${t.label}» اعمال شد`);
+  }
+
+  function autoNumberRooms() {
+    let n = 1;
+    const extras: SketchShape[] = [];
+    doc.shapes.forEach((s) => {
+      if (s.type === "rect" && s.w > 40 && s.h > 40) {
+        extras.push({
+          id: uid(), type: "text",
+          x: s.x + 8, y: s.y + 24,
+          text: String(n++), fontSize: 22, fill: stroke, name: `شماره اتاق ${n - 1}`,
+        });
+      }
+    });
+    if (!extras.length) { toast.error("اتاقی یافت نشد"); return; }
+    commit({ ...doc, shapes: [...doc.shapes, ...extras] });
+    toast.success(`${extras.length} اتاق شماره‌گذاری شد`);
+  }
+
+  async function printPdf() {
+    const svg = svgRef.current; if (!svg) return;
+    const clone = svg.cloneNode(true) as SVGSVGElement;
+    clone.querySelectorAll("[data-overlay]").forEach((n) => n.remove());
+    clone.setAttribute("viewBox", `0 0 ${doc.width} ${doc.height}`);
+    clone.setAttribute("width", String(doc.width));
+    clone.setAttribute("height", String(doc.height));
+    const src = new XMLSerializer().serializeToString(clone);
+    const w = window.open("", "_blank");
+    if (!w) { toast.error("مرورگر پنجره جدید را بست"); return; }
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title || "map"}</title>
+      <style>@page{size:auto;margin:12mm} body{margin:0;background:${doc.background}} svg{width:100%;height:auto;display:block}</style>
+      </head><body>${src}<script>window.onload=()=>{setTimeout(()=>window.print(),200)}</script></body></html>`);
+    w.document.close();
+  }
+
   function updateSelected(patch: Partial<SketchShape>) {
     if (!selectedId) return;
     commit({ ...doc, shapes: doc.shapes.map((s) => (s.id === selectedId ? ({ ...s, ...patch } as SketchShape) : s)) });
@@ -368,6 +515,7 @@ export function SketchEditor({ doc, onChange, title }: Props) {
     { id: "ellipse", icon: Circle, label: "بیضی", hint: "O" },
     { id: "line", icon: Minus, label: "خط", hint: "L" },
     { id: "text", icon: TypeIcon, label: "متن", hint: "T" },
+    { id: "stamp", icon: Sparkle, label: "نماد", hint: "S" },
   ];
 
   const transformTarget = doc.shapes.find((s) => s.id === transformFor) ?? null;
@@ -460,7 +608,30 @@ export function SketchEditor({ doc, onChange, title }: Props) {
           )}
           <Button variant="outline" size="sm" onClick={exportSvg}><Download className="h-4 w-4 ms-1" />SVG</Button>
           <Button variant="outline" size="sm" onClick={exportPng}><Download className="h-4 w-4 ms-1" />PNG</Button>
+          <Button variant="outline" size="sm" onClick={printPdf} title="چاپ / ذخیره PDF"><Printer className="h-4 w-4 ms-1" />PDF</Button>
           <span className="w-px h-6 bg-border mx-1" />
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="flex items-center gap-2 rounded-md border px-2 py-1 text-xs" title="تم نقشه">
+                <Palette className="h-4 w-4" /> تم
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56 space-y-1">
+              {THEMES.map((t) => (
+                <Button key={t.id} size="sm" variant="ghost" className="w-full justify-start" onClick={() => applyTheme(t)}>
+                  <span className="inline-block h-3 w-3 rounded me-2 border" style={{ background: t.bg }} />
+                  {t.label}
+                </Button>
+              ))}
+              <div className="flex items-center gap-2 text-xs pt-2 border-t">
+                <input id="hatch" type="checkbox" checked={hatched} onChange={(e) => setHatched(e.target.checked)} />
+                <label htmlFor="hatch">هاشورزنی اتاق‌ها</label>
+              </div>
+            </PopoverContent>
+          </Popover>
+          <Button variant="ghost" size="sm" onClick={autoNumberRooms} title="شماره‌گذاری خودکار اتاق‌ها">
+            <Hash className="h-4 w-4 ms-1" />شماره
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => setGridType(gridType === "square" ? "hex" : gridType === "hex" ? "none" : "square")} title="گرید">
             {gridType === "hex" ? <Hexagon className="h-4 w-4" /> : <Grid3x3 className="h-4 w-4" />}
             <span className="ms-1 text-[10px]">{gridType}</span>
@@ -468,6 +639,40 @@ export function SketchEditor({ doc, onChange, title }: Props) {
           <Button variant="ghost" size="sm" onClick={generateDungeon} title="ساخت سیاه‌چال (BSP)">
             <Wand2 className="h-4 w-4 ms-1" />سیاه‌چال
           </Button>
+          {tool === "stamp" && (
+            <Popover open>
+              <PopoverTrigger asChild>
+                <button className="flex items-center gap-2 rounded-md border px-2 py-1 text-xs" title="نمادها">
+                  <Sparkle className="h-4 w-4" /> نماد: {STAMPS.find((x) => x.kind === stampKind)?.label}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 max-h-[420px] overflow-auto">
+                {(Object.keys(STAMP_GROUP_LABEL) as StampGroup[]).map((g) => {
+                  const items = STAMPS.filter((s) => s.group === g);
+                  if (!items.length) return null;
+                  return (
+                    <div key={g} className="mb-2">
+                      <div className="text-[10px] font-semibold text-muted-foreground mb-1 uppercase tracking-wide">{STAMP_GROUP_LABEL[g]}</div>
+                      <div className="grid grid-cols-5 gap-1">
+                        {items.map((s) => (
+                          <button
+                            key={s.kind}
+                            onClick={() => setStampKind(s.kind)}
+                            title={s.label}
+                            className={`aspect-square rounded flex items-center justify-center border ${stampKind === s.kind ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+                          >
+                            <s.Icon className="h-4 w-4" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="mt-2 text-xs">اندازه: {stampSize}px</div>
+                <Slider value={[stampSize]} min={16} max={200} step={2} onValueChange={(v) => setStampSize(v[0])} />
+              </PopoverContent>
+            </Popover>
+          )}
           <Button variant={show3D ? "default" : "outline"} size="sm" onClick={() => setShow3D(true)} title="نمای سه‌بعدی">
             <Box className="h-4 w-4 ms-1" />3D
           </Button>
@@ -504,12 +709,20 @@ export function SketchEditor({ doc, onChange, title }: Props) {
               <pattern id="hex-grid" width={gridSize * 1.732} height={gridSize * 1.5} patternUnits="userSpaceOnUse">
                 <path d={`M ${gridSize * 0.866} 0 L ${gridSize * 1.732} ${gridSize * 0.5} L ${gridSize * 1.732} ${gridSize * 1.5} L ${gridSize * 0.866} ${gridSize * 2} L 0 ${gridSize * 1.5} L 0 ${gridSize * 0.5} Z`} fill="none" stroke="rgba(0,0,0,0.1)" strokeWidth="1" />
               </pattern>
+              <pattern id="hatch-fill" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                <rect width="8" height="8" fill={fill} />
+                <line x1="0" y1="0" x2="0" y2="8" stroke={stroke} strokeWidth="1" opacity="0.35" />
+              </pattern>
+              <pattern id="hatch-cross" width="10" height="10" patternUnits="userSpaceOnUse">
+                <line x1="0" y1="0" x2="10" y2="10" stroke={stroke} strokeWidth="0.8" opacity="0.3" />
+                <line x1="10" y1="0" x2="0" y2="10" stroke={stroke} strokeWidth="0.8" opacity="0.3" />
+              </pattern>
             </defs>
             {gridType !== "none" && (
               <rect x={-100000} y={-100000} width={200000} height={200000} fill={`url(#${gridType === "hex" ? "hex-grid" : "sq-grid"})`} pointerEvents="none" />
             )}
-            {visibleShapes.map((s) => renderShape(s, selectedId, setSelectedId, tool === "select" || tool === "move", startDragShape))}
-            {draft && renderShape(draft, null, () => {}, false, () => {})}
+            {visibleShapes.map((s) => renderShape(s, selectedId, setSelectedId, tool === "select" || tool === "move", startDragShape, hatched))}
+            {draft && renderShape(draft, null, () => {}, false, () => {}, hatched)}
           </svg>
           {show3D && (
             <button
@@ -639,6 +852,7 @@ function renderShape(
   onSelect: (id: string) => void,
   interactive: boolean,
   onStartDrag: (id: string, e: React.PointerEvent) => void,
+  hatched: boolean = false,
 ) {
   if (s.hidden) return null;
   const isSel = s.id === selectedId;
@@ -658,9 +872,356 @@ function renderShape(
   } as const;
   const selStyle = isSel ? { filter: "drop-shadow(0 0 0 hsl(var(--primary)))", outline: "1px dashed hsl(var(--primary))" } : {};
   if (s.type === "path") return <path {...commonProps} d={s.d} stroke={s.stroke} strokeWidth={s.strokeWidth} fill={s.fill ?? "none"} strokeLinecap="round" strokeLinejoin="round" style={{ ...commonProps.style, ...selStyle }} />;
-  if (s.type === "rect") return <rect {...commonProps} x={s.x} y={s.y} width={s.w} height={s.h} rx={s.radius} ry={s.radius} stroke={s.stroke} strokeWidth={s.strokeWidth} fill={s.fill} style={{ ...commonProps.style, ...selStyle }} />;
+  if (s.type === "rect") {
+    const useHatch = hatched && s.fill !== "transparent" && s.fill !== "#ffffff";
+    return (
+      <g {...commonProps} style={{ ...commonProps.style, ...selStyle }}>
+        <rect x={s.x} y={s.y} width={s.w} height={s.h} rx={s.radius} ry={s.radius} fill={s.fill} stroke="none" />
+        {useHatch && <rect x={s.x} y={s.y} width={s.w} height={s.h} rx={s.radius} ry={s.radius} fill="url(#hatch-cross)" stroke="none" />}
+        <rect x={s.x} y={s.y} width={s.w} height={s.h} rx={s.radius} ry={s.radius} fill="none" stroke={s.stroke} strokeWidth={s.strokeWidth} />
+      </g>
+    );
+  }
   if (s.type === "ellipse") return <ellipse {...commonProps} cx={s.x + s.w / 2} cy={s.y + s.h / 2} rx={s.w / 2} ry={s.h / 2} stroke={s.stroke} strokeWidth={s.strokeWidth} fill={s.fill} style={{ ...commonProps.style, ...selStyle }} />;
   if (s.type === "line") return <line {...commonProps} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={s.stroke} strokeWidth={s.strokeWidth} strokeLinecap="round" style={{ ...commonProps.style, ...selStyle }} />;
   if (s.type === "text") return <text {...commonProps} x={s.x} y={s.y} fontSize={s.fontSize} fill={s.fill} style={{ ...commonProps.style, ...selStyle, userSelect: "none" }}>{s.text}</text>;
+  if (s.type === "stamp") return renderStamp(s, commonProps, selStyle);
+  return null;
+}
+
+function renderStamp(
+  s: Extract<SketchShape, { type: "stamp" }>,
+  common: { key: string; opacity: number; onPointerDown: (e: React.PointerEvent) => void; style: React.CSSProperties; transform: string | undefined },
+  selStyle: React.CSSProperties,
+) {
+  const { x, y, size, color, kind } = s;
+  const h = size / 2;
+  const style = { ...common.style, ...selStyle };
+  const sw = Math.max(2, size / 16);
+  switch (kind) {
+    case "door":
+      return (
+        <g {...common} style={style}>
+          <rect x={x - h} y={y - h * 0.15} width={size} height={size * 0.3} fill="#f5efdc" stroke={color} strokeWidth={sw} />
+          <line x1={x} y1={y - h * 0.15} x2={x} y2={y + h * 0.15} stroke={color} strokeWidth={sw} />
+        </g>
+      );
+    case "secret-door":
+      return (
+        <g {...common} style={style}>
+          <rect x={x - h} y={y - h * 0.2} width={size} height={size * 0.4} fill="none" stroke={color} strokeWidth={sw} strokeDasharray={`${sw * 2} ${sw * 2}`} />
+          <text x={x} y={y + sw} fontSize={size * 0.35} fill={color} textAnchor="middle" fontWeight="bold">S</text>
+        </g>
+      );
+    case "locked-door":
+      return (
+        <g {...common} style={style}>
+          <rect x={x - h} y={y - h * 0.2} width={size} height={size * 0.4} fill="#f5efdc" stroke={color} strokeWidth={sw} />
+          <circle cx={x} cy={y} r={size * 0.12} fill={color} />
+        </g>
+      );
+    case "portcullis":
+      return (
+        <g {...common} style={style}>
+          <rect x={x - h} y={y - h * 0.25} width={size} height={size * 0.5} fill="none" stroke={color} strokeWidth={sw} />
+          {[0.2, 0.4, 0.6, 0.8].map((f, i) => (
+            <line key={i} x1={x - h + size * f} y1={y - h * 0.25} x2={x - h + size * f} y2={y + h * 0.25} stroke={color} strokeWidth={sw} />
+          ))}
+        </g>
+      );
+    case "stairs-up":
+    case "stairs-down": {
+      const dir = kind === "stairs-up" ? 1 : -1;
+      return (
+        <g {...common} style={style}>
+          <rect x={x - h} y={y - h} width={size} height={size} fill="none" stroke={color} strokeWidth={sw} />
+          {[0.2, 0.4, 0.6, 0.8].map((f, i) => (
+            <line key={i} x1={x - h} y1={y - h + size * f} x2={x + h} y2={y - h + size * f} stroke={color} strokeWidth={sw * 0.7} />
+          ))}
+          <polygon points={`${x},${y - h * 0.6 * dir} ${x - h * 0.35},${y + h * 0.1 * dir} ${x + h * 0.35},${y + h * 0.1 * dir}`} fill={color} />
+        </g>
+      );
+    }
+    case "spiral-stairs":
+      return (
+        <g {...common} style={style}>
+          <circle cx={x} cy={y} r={h} fill="none" stroke={color} strokeWidth={sw} />
+          <path d={`M ${x} ${y} m -${h * 0.7} 0 a ${h * 0.7} ${h * 0.7} 0 1 1 ${h * 1.4} 0`} fill="none" stroke={color} strokeWidth={sw} />
+          <line x1={x} y1={y} x2={x + h} y2={y} stroke={color} strokeWidth={sw} />
+        </g>
+      );
+    case "pillar":
+      return <circle {...common} cx={x} cy={y} r={h * 0.6} fill={color} style={style} />;
+    case "treasure":
+      return (
+        <g {...common} style={style}>
+          <rect x={x - h * 0.7} y={y - h * 0.5} width={size * 0.7} height={size * 0.5} fill="#d4a15a" stroke={color} strokeWidth={sw} />
+          <line x1={x - h * 0.7} y1={y - h * 0.15} x2={x + h * 0.7} y2={y - h * 0.15} stroke={color} strokeWidth={sw} />
+          <circle cx={x} cy={y - h * 0.15} r={size * 0.05} fill={color} />
+        </g>
+      );
+    case "monster":
+      return (
+        <g {...common} style={style}>
+          <circle cx={x} cy={y} r={h * 0.75} fill="#8b1a1a" stroke={color} strokeWidth={sw} />
+          <text x={x} y={y + size * 0.15} fontSize={size * 0.55} fill="#fff" textAnchor="middle" fontWeight="bold">M</text>
+        </g>
+      );
+    case "trap":
+      return (
+        <g {...common} style={style}>
+          <polygon points={`${x},${y - h * 0.8} ${x + h * 0.8},${y + h * 0.6} ${x - h * 0.8},${y + h * 0.6}`} fill="#f5c542" stroke={color} strokeWidth={sw} />
+          <text x={x} y={y + h * 0.35} fontSize={size * 0.5} fill={color} textAnchor="middle" fontWeight="bold">!</text>
+        </g>
+      );
+    case "compass":
+      return (
+        <g {...common} style={style}>
+          <circle cx={x} cy={y} r={h} fill="none" stroke={color} strokeWidth={sw} />
+          <polygon points={`${x},${y - h * 0.85} ${x + h * 0.2},${y} ${x},${y + h * 0.85} ${x - h * 0.2},${y}`} fill={color} />
+          <text x={x} y={y - h - sw} fontSize={size * 0.25} fill={color} textAnchor="middle" fontWeight="bold">N</text>
+        </g>
+      );
+    case "scale-bar":
+      return (
+        <g {...common} style={style}>
+          {[0, 1, 2, 3].map((i) => (
+            <rect key={i} x={x - h + (size / 4) * i} y={y - size * 0.08} width={size / 4} height={size * 0.16} fill={i % 2 === 0 ? color : "#ffffff"} stroke={color} strokeWidth={sw * 0.6} />
+          ))}
+          <text x={x} y={y + size * 0.45} fontSize={size * 0.22} fill={color} textAnchor="middle">10ft</text>
+        </g>
+      );
+    /* ---------- Extra doors ---------- */
+    case "door-iron":
+      return (
+        <g {...common} style={style}>
+          <rect x={x - h} y={y - h * 0.25} width={size} height={size * 0.5} fill="#6b7280" stroke={color} strokeWidth={sw} />
+          {[0.25, 0.5, 0.75].map((f, i) => <circle key={i} cx={x - h + size * f} cy={y - h * 0.15} r={sw} fill={color} />)}
+          {[0.25, 0.5, 0.75].map((f, i) => <circle key={i + 3} cx={x - h + size * f} cy={y + h * 0.15} r={sw} fill={color} />)}
+        </g>
+      );
+    case "door-arched":
+      return (
+        <g {...common} style={style}>
+          <path d={`M ${x - h} ${y + h * 0.3} L ${x - h} ${y} A ${h} ${h} 0 0 1 ${x + h} ${y} L ${x + h} ${y + h * 0.3} Z`} fill="#f5efdc" stroke={color} strokeWidth={sw} />
+          <line x1={x} y1={y - h * 0.6} x2={x} y2={y + h * 0.3} stroke={color} strokeWidth={sw * 0.8} />
+        </g>
+      );
+    case "door-double":
+      return (
+        <g {...common} style={style}>
+          <rect x={x - h} y={y - h * 0.2} width={size} height={size * 0.4} fill="#f5efdc" stroke={color} strokeWidth={sw} />
+          <line x1={x} y1={y - h * 0.2} x2={x} y2={y + h * 0.2} stroke={color} strokeWidth={sw * 1.2} />
+          <circle cx={x - h * 0.25} cy={y} r={sw} fill={color} />
+          <circle cx={x + h * 0.25} cy={y} r={sw} fill={color} />
+        </g>
+      );
+    case "door-hidden-arch":
+      return (
+        <g {...common} style={style}>
+          <path d={`M ${x - h} ${y + h * 0.3} L ${x - h} ${y} A ${h} ${h} 0 0 1 ${x + h} ${y} L ${x + h} ${y + h * 0.3}`} fill="none" stroke={color} strokeWidth={sw} strokeDasharray={`${sw * 2} ${sw * 2}`} />
+          <text x={x} y={y + h * 0.15} fontSize={size * 0.3} fill={color} textAnchor="middle" fontWeight="bold">?</text>
+        </g>
+      );
+    case "door-vault":
+      return (
+        <g {...common} style={style}>
+          <circle cx={x} cy={y} r={h * 0.85} fill="#6b7280" stroke={color} strokeWidth={sw} />
+          <circle cx={x} cy={y} r={h * 0.55} fill="none" stroke={color} strokeWidth={sw * 0.6} />
+          {[0, 60, 120, 180, 240, 300].map((a) => {
+            const rad = (a * Math.PI) / 180;
+            return <line key={a} x1={x + Math.cos(rad) * h * 0.55} y1={y + Math.sin(rad) * h * 0.55} x2={x + Math.cos(rad) * h * 0.85} y2={y + Math.sin(rad) * h * 0.85} stroke={color} strokeWidth={sw * 0.6} />;
+          })}
+          <circle cx={x} cy={y} r={h * 0.12} fill={color} />
+        </g>
+      );
+    /* ---------- Walls ---------- */
+    case "wall-stone":
+      return (
+        <g {...common} style={style}>
+          <rect x={x - h} y={y - h * 0.2} width={size} height={size * 0.4} fill="#b8b0a0" stroke={color} strokeWidth={sw} />
+          {[0.15, 0.35, 0.55, 0.75].map((f, i) => (
+            <line key={i} x1={x - h + size * f} y1={y - h * 0.2} x2={x - h + size * f + (i % 2 ? -sw : sw)} y2={y + h * 0.2} stroke={color} strokeWidth={sw * 0.6} />
+          ))}
+          <line x1={x - h} y1={y} x2={x + h} y2={y} stroke={color} strokeWidth={sw * 0.6} />
+        </g>
+      );
+    case "wall-brick":
+      return (
+        <g {...common} style={style}>
+          <rect x={x - h} y={y - h * 0.25} width={size} height={size * 0.5} fill="#b45f3c" stroke={color} strokeWidth={sw} />
+          {[0, 1, 2].map((row) => {
+            const yy = y - h * 0.25 + (row + 0.5) * (size * 0.5 / 3);
+            const offset = row % 2 === 0 ? 0 : size / 8;
+            return (
+              <g key={row}>
+                <line x1={x - h} y1={yy} x2={x + h} y2={yy} stroke={color} strokeWidth={sw * 0.4} />
+                {[0, 0.25, 0.5, 0.75, 1].map((f) => (
+                  <line key={f} x1={x - h + size * f + offset} y1={yy - size * 0.5 / 6} x2={x - h + size * f + offset} y2={yy + size * 0.5 / 6} stroke={color} strokeWidth={sw * 0.4} />
+                ))}
+              </g>
+            );
+          })}
+        </g>
+      );
+    case "wall-rubble":
+      return (
+        <g {...common} style={style}>
+          {[[-0.35, -0.05, 0.18], [-0.05, 0.1, 0.14], [0.25, -0.1, 0.2], [-0.2, 0.15, 0.12], [0.35, 0.05, 0.17]].map(([dx, dy, r], i) => (
+            <circle key={i} cx={x + size * dx} cy={y + size * dy} r={size * r} fill="#9c948a" stroke={color} strokeWidth={sw * 0.7} />
+          ))}
+        </g>
+      );
+    case "wall-thick":
+      return (
+        <g {...common} style={style}>
+          <rect x={x - h} y={y - h * 0.35} width={size} height={size * 0.7} fill="#8a8275" stroke={color} strokeWidth={sw * 1.4} />
+          <rect x={x - h + sw * 2} y={y - h * 0.35 + sw * 2} width={size - sw * 4} height={size * 0.7 - sw * 4} fill="none" stroke={color} strokeWidth={sw * 0.5} strokeDasharray={`${sw} ${sw * 2}`} />
+        </g>
+      );
+    case "wall-broken":
+      return (
+        <g {...common} style={style}>
+          <path d={`M ${x - h} ${y} L ${x - h * 0.4} ${y - h * 0.2} L ${x - h * 0.2} ${y + h * 0.15} L ${x + h * 0.1} ${y - h * 0.25} L ${x + h * 0.4} ${y + h * 0.1} L ${x + h} ${y}`} fill="none" stroke={color} strokeWidth={sw * 1.2} strokeLinejoin="round" />
+          <circle cx={x - h * 0.15} cy={y + h * 0.3} r={sw * 1.2} fill={color} opacity="0.5" />
+          <circle cx={x + h * 0.3} cy={y + h * 0.35} r={sw} fill={color} opacity="0.5" />
+        </g>
+      );
+    /* ---------- Lakes / water ---------- */
+    case "lake-small":
+      return (
+        <g {...common} style={style}>
+          <ellipse cx={x} cy={y} rx={h * 0.85} ry={h * 0.6} fill="#5aa9d6" stroke={color} strokeWidth={sw} />
+          <path d={`M ${x - h * 0.4} ${y - h * 0.1} q ${h * 0.2} -${h * 0.15} ${h * 0.4} 0`} fill="none" stroke="#ffffff" strokeWidth={sw * 0.6} opacity="0.7" />
+        </g>
+      );
+    case "lake-large":
+      return (
+        <g {...common} style={style}>
+          <path d={`M ${x - h} ${y} Q ${x - h * 0.6} ${y - h * 0.8} ${x} ${y - h * 0.7} Q ${x + h * 0.9} ${y - h * 0.5} ${x + h} ${y + h * 0.1} Q ${x + h * 0.5} ${y + h * 0.9} ${x - h * 0.1} ${y + h * 0.7} Q ${x - h * 0.9} ${y + h * 0.3} ${x - h} ${y} Z`} fill="#4c98c8" stroke={color} strokeWidth={sw} />
+          {[[-0.3, -0.2], [0.2, 0.1], [-0.1, 0.3]].map(([dx, dy], i) => (
+            <path key={i} d={`M ${x + size * dx - h * 0.2} ${y + size * dy} q ${h * 0.2} -${h * 0.1} ${h * 0.4} 0`} fill="none" stroke="#ffffff" strokeWidth={sw * 0.5} opacity="0.6" />
+          ))}
+        </g>
+      );
+    case "pond":
+      return (
+        <g {...common} style={style}>
+          <circle cx={x} cy={y} r={h * 0.75} fill="#6fb0d8" stroke={color} strokeWidth={sw} />
+          <circle cx={x} cy={y} r={h * 0.45} fill="none" stroke="#ffffff" strokeWidth={sw * 0.4} opacity="0.6" />
+          <circle cx={x} cy={y} r={h * 0.2} fill="none" stroke="#ffffff" strokeWidth={sw * 0.4} opacity="0.5" />
+        </g>
+      );
+    case "river":
+      return (
+        <g {...common} style={style}>
+          <path d={`M ${x - h} ${y - h * 0.4} Q ${x - h * 0.2} ${y + h * 0.2} ${x + h * 0.2} ${y - h * 0.2} Q ${x + h * 0.8} ${y + h * 0.4} ${x + h} ${y}`} fill="none" stroke="#5aa9d6" strokeWidth={sw * 4} strokeLinecap="round" />
+          <path d={`M ${x - h} ${y - h * 0.4} Q ${x - h * 0.2} ${y + h * 0.2} ${x + h * 0.2} ${y - h * 0.2} Q ${x + h * 0.8} ${y + h * 0.4} ${x + h} ${y}`} fill="none" stroke="#ffffff" strokeWidth={sw * 0.6} opacity="0.6" />
+        </g>
+      );
+    case "waterfall":
+      return (
+        <g {...common} style={style}>
+          <rect x={x - h * 0.6} y={y - h} width={size * 0.6} height={size * 0.35} fill="#7c8794" stroke={color} strokeWidth={sw * 0.8} />
+          {[-0.4, -0.15, 0.1, 0.35].map((f, i) => (
+            <path key={i} d={`M ${x + size * f * 0.6} ${y - h * 0.3} Q ${x + size * f * 0.6 + sw} ${y + h * 0.2} ${x + size * f * 0.6} ${y + h * 0.8}`} fill="none" stroke="#7ec4e6" strokeWidth={sw * 1.2} />
+          ))}
+          <ellipse cx={x} cy={y + h * 0.85} rx={h * 0.8} ry={h * 0.15} fill="#5aa9d6" stroke={color} strokeWidth={sw * 0.6} />
+        </g>
+      );
+    /* ---------- Bridges (wood + rock) ---------- */
+    case "bridge-wood":
+      return (
+        <g {...common} style={style}>
+          <rect x={x - h} y={y - h * 0.2} width={size} height={size * 0.4} fill="#c69456" stroke={color} strokeWidth={sw} />
+          {[0.12, 0.28, 0.44, 0.6, 0.76, 0.92].map((f, i) => (
+            <line key={i} x1={x - h + size * f} y1={y - h * 0.2} x2={x - h + size * f} y2={y + h * 0.2} stroke={color} strokeWidth={sw * 0.6} />
+          ))}
+          <line x1={x - h} y1={y - h * 0.2} x2={x + h} y2={y - h * 0.2} stroke={color} strokeWidth={sw * 0.9} />
+          <line x1={x - h} y1={y + h * 0.2} x2={x + h} y2={y + h * 0.2} stroke={color} strokeWidth={sw * 0.9} />
+        </g>
+      );
+    case "bridge-rock":
+      return (
+        <g {...common} style={style}>
+          <path d={`M ${x - h} ${y + h * 0.15} Q ${x} ${y - h * 0.6} ${x + h} ${y + h * 0.15} L ${x + h} ${y + h * 0.35} L ${x - h} ${y + h * 0.35} Z`} fill="#9c948a" stroke={color} strokeWidth={sw} />
+          {[-0.6, -0.2, 0.2, 0.6].map((f, i) => (
+            <line key={i} x1={x + size * f * 0.5} y1={y - h * 0.35} x2={x + size * f * 0.5} y2={y + h * 0.15} stroke={color} strokeWidth={sw * 0.5} />
+          ))}
+        </g>
+      );
+    case "bridge-rope":
+      return (
+        <g {...common} style={style}>
+          <path d={`M ${x - h} ${y - h * 0.4} Q ${x} ${y + h * 0.2} ${x + h} ${y - h * 0.4}`} fill="none" stroke={color} strokeWidth={sw} />
+          <path d={`M ${x - h} ${y + h * 0.1} Q ${x} ${y + h * 0.5} ${x + h} ${y + h * 0.1}`} fill="none" stroke={color} strokeWidth={sw} />
+          {[0.15, 0.3, 0.45, 0.6, 0.75, 0.9].map((f, i) => {
+            const px = x - h + size * f;
+            const t = f;
+            const topY = y - h * 0.4 + 4 * h * 0.6 * t * (1 - t);
+            const botY = y + h * 0.1 + 4 * h * 0.4 * t * (1 - t);
+            return <line key={i} x1={px} y1={topY} x2={px} y2={botY} stroke={color} strokeWidth={sw * 0.5} />;
+          })}
+        </g>
+      );
+    case "bridge-arch":
+      return (
+        <g {...common} style={style}>
+          <rect x={x - h} y={y} width={size} height={size * 0.25} fill="#9c948a" stroke={color} strokeWidth={sw} />
+          <path d={`M ${x - h * 0.7} ${y + h * 0.25} A ${h * 0.7} ${h * 0.5} 0 0 1 ${x + h * 0.7} ${y + h * 0.25}`} fill="#ffffff" stroke={color} strokeWidth={sw} />
+          <path d={`M ${x - h} ${y - h * 0.05} Q ${x} ${y - h * 0.5} ${x + h} ${y - h * 0.05}`} fill="none" stroke={color} strokeWidth={sw} />
+          <rect x={x - h} y={y - h * 0.05} width={size} height={size * 0.1} fill="#c9c1b3" stroke={color} strokeWidth={sw * 0.6} />
+        </g>
+      );
+    case "bridge-broken":
+      return (
+        <g {...common} style={style}>
+          <rect x={x - h} y={y - h * 0.15} width={size * 0.35} height={size * 0.3} fill="#c69456" stroke={color} strokeWidth={sw} />
+          <rect x={x + h * 0.3} y={y - h * 0.1} width={size * 0.4} height={size * 0.25} fill="#c69456" stroke={color} strokeWidth={sw} />
+          <path d={`M ${x - h * 0.3} ${y - h * 0.15} L ${x - h * 0.15} ${y + h * 0.5} L ${x - h * 0.05} ${y + h * 0.15} L ${x + h * 0.1} ${y + h * 0.6}`} fill="none" stroke={color} strokeWidth={sw * 0.6} strokeDasharray={`${sw * 1.5} ${sw}`} />
+        </g>
+      );
+    /* ---------- Elementals ---------- */
+    case "elem-fire":
+      return (
+        <g {...common} style={style}>
+          <path d={`M ${x} ${y - h * 0.85} C ${x + h * 0.6} ${y - h * 0.2}, ${x + h * 0.5} ${y + h * 0.6}, ${x} ${y + h * 0.7} C ${x - h * 0.5} ${y + h * 0.6}, ${x - h * 0.6} ${y - h * 0.2}, ${x} ${y - h * 0.85} Z`} fill="#ff8a3c" stroke={color} strokeWidth={sw} />
+          <path d={`M ${x} ${y - h * 0.45} C ${x + h * 0.35} ${y}, ${x + h * 0.3} ${y + h * 0.4}, ${x} ${y + h * 0.5} C ${x - h * 0.3} ${y + h * 0.4}, ${x - h * 0.35} ${y}, ${x} ${y - h * 0.45} Z`} fill="#ffd166" opacity="0.85" />
+        </g>
+      );
+    case "elem-water":
+      return (
+        <g {...common} style={style}>
+          <path d={`M ${x} ${y - h * 0.85} C ${x + h * 0.7} ${y - h * 0.1}, ${x + h * 0.5} ${y + h * 0.7}, ${x} ${y + h * 0.75} C ${x - h * 0.5} ${y + h * 0.7}, ${x - h * 0.7} ${y - h * 0.1}, ${x} ${y - h * 0.85} Z`} fill="#3d8fc4" stroke={color} strokeWidth={sw} />
+          <path d={`M ${x - h * 0.25} ${y + h * 0.25} q ${h * 0.15} -${h * 0.15} ${h * 0.3} 0`} fill="none" stroke="#ffffff" strokeWidth={sw * 0.6} opacity="0.7" />
+        </g>
+      );
+    case "elem-earth":
+      return (
+        <g {...common} style={style}>
+          <polygon points={`${x - h * 0.8},${y + h * 0.6} ${x - h * 0.3},${y - h * 0.4} ${x + h * 0.2},${y - h * 0.7} ${x + h * 0.7},${y - h * 0.2} ${x + h * 0.8},${y + h * 0.6}`} fill="#8a6a3d" stroke={color} strokeWidth={sw} />
+          <polygon points={`${x - h * 0.3},${y - h * 0.4} ${x + h * 0.2},${y - h * 0.7} ${x + h * 0.7},${y - h * 0.2} ${x + h * 0.15},${y + h * 0.05}`} fill="#a37f4a" opacity="0.85" />
+          {[[-0.4, 0.35], [0.2, 0.25], [-0.05, 0.4]].map(([dx, dy], i) => <circle key={i} cx={x + size * dx * 0.8} cy={y + size * dy * 0.8} r={sw} fill={color} opacity="0.6" />)}
+        </g>
+      );
+    case "elem-air":
+      return (
+        <g {...common} style={style}>
+          {[-0.4, -0.1, 0.2].map((dy, i) => (
+            <path key={i} d={`M ${x - h * 0.8} ${y + size * dy} q ${h * 0.4} -${h * 0.2} ${h * 0.9} 0 q ${h * 0.3} ${h * 0.15} ${h * 0.5} -${h * 0.05}`} fill="none" stroke="#8fb4c7" strokeWidth={sw * 1.3} strokeLinecap="round" />
+          ))}
+          <path d={`M ${x - h * 0.6} ${y + h * 0.5} q ${h * 0.4} -${h * 0.15} ${h * 0.8} 0`} fill="none" stroke={color} strokeWidth={sw * 0.7} />
+        </g>
+      );
+    case "elem-storm":
+      return (
+        <g {...common} style={style}>
+          <ellipse cx={x} cy={y - h * 0.3} rx={h * 0.9} ry={h * 0.35} fill="#5a6472" stroke={color} strokeWidth={sw} />
+          <ellipse cx={x - h * 0.4} cy={y - h * 0.15} rx={h * 0.4} ry={h * 0.25} fill="#5a6472" />
+          <ellipse cx={x + h * 0.4} cy={y - h * 0.15} rx={h * 0.4} ry={h * 0.25} fill="#5a6472" />
+          <polygon points={`${x - h * 0.1},${y + h * 0.05} ${x + h * 0.2},${y + h * 0.05} ${x + h * 0.05},${y + h * 0.4} ${x + h * 0.25},${y + h * 0.4} ${x - h * 0.05},${y + h * 0.85} ${x + h * 0.05},${y + h * 0.45} ${x - h * 0.15},${y + h * 0.45}`} fill="#ffd23f" stroke={color} strokeWidth={sw * 0.5} />
+        </g>
+      );
+  }
   return null;
 }
