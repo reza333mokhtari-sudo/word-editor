@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import type { SketchDoc, SketchShape } from "./SketchEditor";
-import { Camera, X, Move3d, RotateCcw } from "lucide-react";
+import { Camera, X, Move3d, RotateCcw, RotateCw } from "lucide-react";
 
 /**
  * 3D isometric/perspective preview of the sketch. Rects & rooms become extruded
@@ -17,9 +17,12 @@ import { Camera, X, Move3d, RotateCcw } from "lucide-react";
 export function Sketch3DPreview({ doc, onClose }: { doc: SketchDoc; onClose: () => void }) {
   const mount = useRef<HTMLDivElement | null>(null);
   const [mode, setMode] = useState<"iso" | "perspective">("perspective");
+  const [autoRotate, setAutoRotate] = useState(false);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | THREE.OrthographicCamera | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
+  const autoRotateRef = useRef(false);
+  useEffect(() => { autoRotateRef.current = autoRotate; }, [autoRotate]);
 
   useEffect(() => {
     if (!mount.current) return;
@@ -144,6 +147,16 @@ export function Sketch3DPreview({ doc, onClose }: { doc: SketchDoc; onClose: () 
     const clock = new THREE.Clock();
     const tick = () => {
       const dt = clock.getDelta();
+      // Auto-rotate around target
+      if (autoRotateRef.current && cameraRef.current) {
+        const cam = cameraRef.current;
+        const offset = cam.position.clone().sub(state.target);
+        const sph = new THREE.Spherical().setFromVector3(offset);
+        sph.theta -= dt * 0.35;
+        offset.setFromSpherical(sph);
+        cam.position.copy(state.target).add(offset);
+        cam.lookAt(state.target);
+      }
       // Fly with RMB held + WASD (3ds Max walkthrough)
       if (state.rmbDown && cameraRef.current) {
         const cam = cameraRef.current;
@@ -202,6 +215,9 @@ export function Sketch3DPreview({ doc, onClose }: { doc: SketchDoc; onClose: () 
         <button onClick={() => setMode(mode === "iso" ? "perspective" : "iso")} className="rounded bg-white/10 hover:bg-white/20 px-2 py-1 flex items-center gap-1">
           <Move3d className="h-3.5 w-3.5" /> {mode === "iso" ? "Perspective" : "Isometric"}
         </button>
+        <button onClick={() => setAutoRotate((v) => !v)} className={`rounded px-2 py-1 flex items-center gap-1 ${autoRotate ? "bg-emerald-500/30 hover:bg-emerald-500/40" : "bg-white/10 hover:bg-white/20"}`} title="چرخش خودکار">
+          <RotateCw className="h-3.5 w-3.5" /> {autoRotate ? "چرخش روشن" : "چرخش خودکار"}
+        </button>
         <button onClick={screenshot} className="rounded bg-white/10 hover:bg-white/20 px-2 py-1">Screenshot PNG</button>
         <div className="flex-1 text-center opacity-70">
           LMB=Orbit · MMB=Pan · RMB=Dolly · RMB+WASD/QE=Fly (Shift=Fast) · Wheel=Zoom · ESC=خروج
@@ -240,6 +256,8 @@ function buildShapes(scene: THREE.Scene, shapes: SketchShape[], mapH: number) {
       m.scale.z = s.h / s.w;
       m.position.set(s.x + s.w / 2, 2, mapH - (s.y + s.h / 2));
       scene.add(m);
+    } else if (s.type === "stamp") {
+      addStamp(scene, s, mapH);
     }
   });
 }
@@ -253,4 +271,95 @@ function addWall(scene: THREE.Scene, x1: number, y1: number, x2: number, y2: num
   m.position.set((x1 + x2) / 2, h / 2, mapH - (y1 + y2) / 2);
   m.rotation.y = -Math.atan2(dy, dx);
   scene.add(m);
+}
+
+function addStamp(scene: THREE.Scene, s: Extract<SketchShape, { type: "stamp" }>, mapH: number) {
+  const cx = s.x, cz = mapH - s.y;
+  const size = s.size;
+  const color = new THREE.Color(s.color || "#2b2b2b");
+  const kind = s.kind;
+  // Category → geometry
+  if (kind.startsWith("wall-")) {
+    const g = new THREE.BoxGeometry(size, 60, size * 0.35);
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x7a6a4a, roughness: 0.95 }));
+    m.position.set(cx, 30, cz); m.castShadow = true; scene.add(m); return;
+  }
+  if (kind.startsWith("door")) {
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(size, 80, 6), new THREE.MeshStandardMaterial({ color: 0x5a3d1e }));
+    frame.position.set(cx, 40, cz); scene.add(frame);
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(3), new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.8, roughness: 0.3 }));
+    knob.position.set(cx + size * 0.3, 40, cz + 4); scene.add(knob); return;
+  }
+  if (kind.startsWith("lake") || kind === "pond" || kind === "river" || kind === "waterfall" || kind === "elem-water") {
+    const g = new THREE.CircleGeometry(size / 2, 32);
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x2a6ba8, roughness: 0.2, metalness: 0.4, transparent: true, opacity: 0.85 }));
+    m.rotation.x = -Math.PI / 2; m.position.set(cx, 1, cz); scene.add(m); return;
+  }
+  if (kind.startsWith("bridge")) {
+    const g = new THREE.BoxGeometry(size * 1.4, 6, size * 0.5);
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: kind === "bridge-rock" || kind === "bridge-arch" ? 0x8a8a8a : 0x8b5a2b }));
+    m.position.set(cx, 8, cz); scene.add(m); return;
+  }
+  if (kind === "elem-fire") {
+    const g = new THREE.ConeGeometry(size / 3, size, 16);
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0xff6a1a, emissive: 0xff3a00, emissiveIntensity: 0.9 }));
+    m.position.set(cx, size / 2, cz); scene.add(m);
+    const light = new THREE.PointLight(0xff8040, 1.2, size * 4); light.position.set(cx, size, cz); scene.add(light); return;
+  }
+  if (kind === "elem-earth") {
+    const g = new THREE.DodecahedronGeometry(size / 2);
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x8b6a3b, roughness: 1 }));
+    m.position.set(cx, size / 2, cz); scene.add(m); return;
+  }
+  if (kind === "elem-air" || kind === "elem-storm") {
+    const g = new THREE.TorusGeometry(size / 2, size / 10, 12, 32);
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: kind === "elem-storm" ? 0x6a4aa8 : 0xa8c8e0, transparent: true, opacity: 0.7 }));
+    m.rotation.x = -Math.PI / 2; m.position.set(cx, size / 2, cz); scene.add(m); return;
+  }
+  if (kind === "pillar") {
+    const g = new THREE.CylinderGeometry(size / 3, size / 3, size * 1.6, 16);
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0xcfc7b3 }));
+    m.position.set(cx, size * 0.8, cz); m.castShadow = true; scene.add(m); return;
+  }
+  if (kind === "stairs-up" || kind === "stairs-down") {
+    const steps = 6;
+    for (let i = 0; i < steps; i++) {
+      const g = new THREE.BoxGeometry(size, 6, size / steps);
+      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x9a8a6a }));
+      const h = kind === "stairs-up" ? (i + 1) * 6 : (steps - i) * 6;
+      m.position.set(cx, h / 2, cz - size / 2 + (i + 0.5) * (size / steps));
+      scene.add(m);
+    }
+    return;
+  }
+  if (kind === "spiral-stairs") {
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const g = new THREE.BoxGeometry(size / 2, 5, size / 6);
+      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x9a8a6a }));
+      m.position.set(cx + Math.cos(a) * size / 3, (i + 1) * 6, cz + Math.sin(a) * size / 3);
+      m.rotation.y = -a; scene.add(m);
+    }
+    return;
+  }
+  if (kind === "treasure") {
+    const g = new THREE.BoxGeometry(size * 0.7, size * 0.5, size * 0.5);
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x6a3a1a }));
+    m.position.set(cx, size * 0.25, cz); scene.add(m);
+    const lid = new THREE.Mesh(new THREE.SphereGeometry(size * 0.35, 16, 8, 0, Math.PI), new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.8, roughness: 0.3 }));
+    lid.position.set(cx, size * 0.5, cz); lid.rotation.x = -Math.PI / 2; scene.add(lid); return;
+  }
+  if (kind === "monster" || kind === "trap") {
+    const g = new THREE.ConeGeometry(size / 2, size, 4);
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: kind === "trap" ? 0xa83030 : 0x603060 }));
+    m.position.set(cx, size / 2, cz); scene.add(m); return;
+  }
+  if (kind === "compass" || kind === "scale-bar") {
+    const g = new THREE.CylinderGeometry(size / 2, size / 2, 3, 24);
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0xf0e6c8 }));
+    m.position.set(cx, 2, cz); scene.add(m); return;
+  }
+  // Fallback marker: colored capsule
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(size / 2.5, 16, 16), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.2 }));
+  cap.position.set(cx, size / 2.5, cz); scene.add(cap);
 }

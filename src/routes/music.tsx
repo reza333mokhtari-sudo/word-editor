@@ -5,6 +5,7 @@ import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Heart, Volume2, Se
 import { Input } from "@/components/ui/input";
 import { ElasticSlider } from "@/components/ui/elastic-slider";
 import { usePlayer, fmt, type Track } from "@/components/player/PlayerContext";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/music")({
   head: () => ({ meta: [
@@ -154,6 +155,12 @@ const PLAYLISTS = [
 ];
 
 function MusicPage() {
+  const [authed, setAuthed] = useState(false);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setAuthed(!!data.session));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setAuthed(!!s));
+    return () => sub.subscription.unsubscribe();
+  }, []);
   const {
     tracks: TRACKS, track, playing, progress, duration, volume,
     shuffle, repeat, toggle, next, prev, pickIndex, seek, setVolume, setShuffle, setRepeat, playExternal,
@@ -202,7 +209,7 @@ function MusicPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <AppHeader authed={false} />
+      <AppHeader authed={authed} />
       <div
         className="relative"
         style={{

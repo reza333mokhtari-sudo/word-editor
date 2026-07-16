@@ -50,9 +50,22 @@ export function AppHeader({ authed }: { authed: boolean }) {
   const initial = (email || "?").trim().charAt(0).toUpperCase();
 
   return (
-    <header className="border-b bg-card sticky top-0 z-30">
-      <div className="max-w-6xl mx-auto flex items-center gap-2 px-4 h-14">
-        <Link to="/" className="font-bold text-lg text-primary">نگارش</Link>
+    <header
+      className="sticky top-0 z-30 border-b border-white/10 backdrop-blur-xl"
+      style={{
+        background:
+          "linear-gradient(180deg, #0a0a0d 0%, #14141a 55%, #1c1c22 100%)",
+        boxShadow: "0 1px 0 rgba(255,255,255,0.06) inset, 0 8px 24px -12px rgba(0,0,0,0.6)",
+      }}
+    >
+      <div className="max-w-6xl mx-auto flex items-center gap-2 px-4 h-14 text-zinc-200">
+        <Link
+          to="/"
+          className="font-bold text-lg tracking-tight bg-clip-text text-transparent"
+          style={{ backgroundImage: "linear-gradient(135deg,#f5f5f5,#a1a1aa 55%,#e5e5e5)" }}
+        >
+          نگارش
+        </Link>
         <nav className="flex items-center gap-1 mr-4">
           {authed && (
             <Button variant="ghost" size="sm" asChild>
