@@ -27,13 +27,15 @@ import {
   Subscript as SubIcon, Sparkles, Loader2, Eraser, Pencil, Eraser as EraserIcon, Trash2, Type,
   Pen, PenTool, Brush, Minus, Feather, Wand2, Languages, Save, Printer, FileText, Home as HomeIcon,
   Plus, Palette, Layout as LayoutIcon, BookOpen, Eye, Maximize2, Minimize2, Youtube, Sigma, Search,
+  Mic, Square, Upload, Music as MusicIcon, Rainbow,
 } from "lucide-react";
 import type { PenType } from "@/components/DrawOverlay";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { DocStatsBadge } from "@/components/DocStatsBadge";
+import { usePlayer } from "@/components/player/PlayerContext";
 
 export function getEditorExtensions() {
   return [
@@ -148,6 +150,12 @@ export type RibbonTab = "home" | "insert" | "design" | "layout" | "review" | "vi
 export function EditorToolbar({ editor, onAi, aiLoading, pencil, onToolUse, toolUses = 0, fullscreen, onToggleFullscreen }: { editor: Editor | null; onAi: (mode: "summarize" | "dedupe" | "rewrite" | "custom") => void; aiLoading: boolean; pencil?: PencilState; onToolUse?: () => void; toolUses?: number; fullscreen?: boolean; onToggleFullscreen?: () => void }) {
   const [textDir, setTextDir] = useState<"rtl" | "ltr">("rtl");
   const [tab, setTab] = useState<RibbonTab>("home");
+  const [recording, setRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const audioInputRef = useRef<HTMLInputElement | null>(null);
+  const player = usePlayer();
   const runTextCommand = useCallback((command: (chain: ReturnType<Editor["chain"]>) => ReturnType<Editor["chain"]>) => {
     if (!editor || !editor.isEditable) return;
     const { empty, from, to } = editor.state.selection;
@@ -226,6 +234,86 @@ export function EditorToolbar({ editor, onAi, aiLoading, pencil, onToolUse, tool
       `<blockquote><p>متن جعبه…</p></blockquote>`
     ).run();
   };
+
+  const insertVoiceBlock = (dataUrl: string, durationSec: number) => {
+    // Draggable audio block. contenteditable=false so tiptap treats it atomically;
+    // draggable=true lets the user move it anywhere in the doc.
+    const bars = Array.from({ length: 40 }, () => 20 + Math.round(Math.random() * 70));
+    const barsHtml = bars.map((h) => `<span style="display:inline-block;width:3px;margin-inline:1px;height:${h}%;background:linear-gradient(180deg,#c9a94a,#7a3fbf);border-radius:2px;"></span>`).join("");
+    const html = `<div class="voice-block" data-voice="1" contenteditable="false" draggable="true" style="display:flex;align-items:center;gap:.75rem;padding:.5rem .75rem;margin:.5rem 0;border:1px solid hsl(var(--border));border-radius:12px;background:linear-gradient(135deg,rgba(201,169,74,.08),rgba(122,63,191,.08));cursor:grab;">
+      <audio controls src="${dataUrl}" style="height:32px;flex-shrink:0;"></audio>
+      <div style="display:flex;align-items:flex-end;height:28px;flex:1;min-width:120px;">${barsHtml}</div>
+      <span style="font-size:11px;opacity:.7;font-variant-numeric:tabular-nums;">${Math.round(durationSec)}s</span>
+    </div><p></p>`;
+    editor.chain().focus().insertContent(html).run();
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      chunksRef.current = [];
+      const started = Date.now();
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        const dur = (Date.now() - started) / 1000;
+        const reader = new FileReader();
+        reader.onload = () => insertVoiceBlock(reader.result as string, dur);
+        reader.readAsDataURL(blob);
+        stream.getTracks().forEach((t) => t.stop());
+      };
+      mr.start();
+      mediaRecorderRef.current = mr;
+      setRecording(true);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    mediaRecorderRef.current = null;
+    setRecording(false);
+  };
+
+  const onImageFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => editor.chain().focus().setImage({ src: reader.result as string }).run();
+    reader.readAsDataURL(file);
+  };
+  const onAudioFile = (file: File) => {
+    const url = URL.createObjectURL(file);
+    // Send to docked player so it survives navigation
+    player.playExternal({
+      id: `upload-${Date.now()}`,
+      title: file.name.replace(/\.[^.]+$/, ""),
+      artist: "فایل محلی",
+      album: "آپلود از ادیتور",
+      duration: 0,
+      cover: "https://picsum.photos/seed/upload/400/400",
+      src: url,
+      hue: 280,
+    });
+  };
+
+  const applyGradientToSelection = (grad: string) => {
+    if (!editor) return;
+    const { from, to, empty } = editor.state.selection;
+    if (empty) return;
+    const text = editor.state.doc.textBetween(from, to, " ");
+    if (!text) return;
+    const html = `<span style="background:${grad};-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:700;">${text.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]!))}</span>`;
+    editor.chain().focus().deleteRange({ from, to }).insertContent(html).run();
+  };
+
+  const GRADIENTS: { name: string; value: string }[] = [
+    { name: "طلا-بنفش", value: "linear-gradient(90deg,#c9a94a,#7a3fbf)" },
+    { name: "غروب", value: "linear-gradient(90deg,#ff6a00,#ee0979)" },
+    { name: "اقیانوس", value: "linear-gradient(90deg,#00c6ff,#0072ff)" },
+    { name: "جنگل", value: "linear-gradient(90deg,#11998e,#38ef7d)" },
+    { name: "آتش", value: "linear-gradient(90deg,#f12711,#f5af19)" },
+    { name: "نئون", value: "linear-gradient(90deg,#ff00cc,#333399)" },
+  ];
 
   return (
     <div className="border-b bg-card sticky top-14 z-20">
@@ -341,6 +429,37 @@ export function EditorToolbar({ editor, onAi, aiLoading, pencil, onToolUse, tool
       <Btn active={editor.isActive("superscript")} title="بالانویس" onClick={() => runTextCommand((chain) => chain.toggleSuperscript())}><SupIcon className="h-4 w-4" /></Btn>
       <Btn active={editor.isActive("subscript")} title="زیرنویس" onClick={() => runTextCommand((chain) => chain.toggleSubscript())}><SubIcon className="h-4 w-4" /></Btn>
 
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            type="button" variant="ghost" size="icon" className="h-8 w-8"
+            title={selEmpty ? "متن را انتخاب کنید سپس رنگ گرادیانت بزنید" : "رنگ گرادیانت"}
+            disabled={selEmpty}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            <Rainbow className="h-4 w-4" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-56 space-y-2">
+          <Label className="text-xs">گرادیانت برای متن انتخاب‌شده</Label>
+          <div className="grid grid-cols-2 gap-1.5">
+            {GRADIENTS.map((g) => (
+              <button
+                key={g.name}
+                type="button"
+                title={g.name}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applyGradientToSelection(g.value)}
+                className="h-8 rounded-md border text-[10px] font-bold text-white shadow-sm"
+                style={{ background: g.value }}
+              >
+                {g.name}
+              </button>
+            ))}
+          </div>
+        </PopoverContent>
+      </Popover>
+
       <Separator orientation="vertical" className="h-6 mx-1" />
       <Btn active={editor.isActive({ textAlign: "right" })} title="راست‌چین" onClick={() => runTextCommand((chain) => chain.setTextAlign("right"))}><AlignRight className="h-4 w-4" /></Btn>
       <Btn active={editor.isActive({ textAlign: "center" })} title="وسط‌چین" onClick={() => runTextCommand((chain) => chain.setTextAlign("center"))}><AlignCenter className="h-4 w-4" /></Btn>
@@ -426,8 +545,37 @@ export function EditorToolbar({ editor, onAi, aiLoading, pencil, onToolUse, tool
       </>)}
       {tab === "insert" && (<>
         <Btn title="تصویر" onClick={addImage}><ImageIcon className="h-4 w-4" /></Btn>
+        <Btn title="آپلود تصویر از دستگاه" onClick={() => imageInputRef.current?.click()}>
+          <Upload className="h-4 w-4" />
+        </Btn>
+        <input
+          ref={imageInputRef} type="file" accept="image/*" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) onImageFile(f); e.currentTarget.value = ""; }}
+        />
         <Btn title="جدول" onClick={insertTable}><TableIcon className="h-4 w-4" /></Btn>
         <Btn title="لینک" onClick={setLink}><LinkIcon className="h-4 w-4" /></Btn>
+        <Separator orientation="vertical" className="h-6 mx-1" />
+        {recording ? (
+          <Button
+            type="button" variant="destructive" size="sm" className="h-8 gap-1.5"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={stopRecording}
+            title="پایان ضبط"
+          >
+            <Square className="h-4 w-4" />
+            <span className="text-xs">توقف ضبط</span>
+            <span className="voice-rec-dot" />
+          </Button>
+        ) : (
+          <Btn title="ضبط صدا (Voice)" onClick={startRecording}><Mic className="h-4 w-4" /></Btn>
+        )}
+        <Btn title="آپلود فایل صوتی (پخش در Docked Player)" onClick={() => audioInputRef.current?.click()}>
+          <MusicIcon className="h-4 w-4" />
+        </Btn>
+        <input
+          ref={audioInputRef} type="file" accept="audio/*" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) onAudioFile(f); e.currentTarget.value = ""; }}
+        />
         <Separator orientation="vertical" className="h-6 mx-1" />
         <Btn title="جعبه متن" onClick={insertTextBox}><Type className="h-4 w-4" /></Btn>
         <Btn title="خط جداکننده" onClick={insertHR}><Minus className="h-4 w-4" /></Btn>
@@ -510,8 +658,24 @@ export function EditorSurface({ editor, children }: { editor: Editor | null; chi
   // Auto-focus on first mount only, so drawing/pencil mode doesn't steal focus back.
   useEffect(() => { if (editor) editor.commands.focus("end", { scrollIntoView: false }); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
+  const player = usePlayer();
+  const active = player.started && player.playing;
   return (
     <div className="relative">
+      {active && (
+        <>
+          <div className="editor-equalizer editor-equalizer-left" aria-hidden>
+            {Array.from({ length: 18 }).map((_, i) => (
+              <span key={i} style={{ animationDelay: `${(i * 0.07).toFixed(2)}s` }} />
+            ))}
+          </div>
+          <div className="editor-equalizer editor-equalizer-right" aria-hidden>
+            {Array.from({ length: 18 }).map((_, i) => (
+              <span key={i} style={{ animationDelay: `${(i * 0.09).toFixed(2)}s` }} />
+            ))}
+          </div>
+        </>
+      )}
       <EditorContent editor={editor} className="bg-card min-h-[calc(100vh-8rem)]" />
       {children}
     </div>

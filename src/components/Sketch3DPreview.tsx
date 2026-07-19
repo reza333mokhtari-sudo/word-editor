@@ -274,92 +274,160 @@ function addWall(scene: THREE.Scene, x1: number, y1: number, x2: number, y2: num
 }
 
 function addStamp(scene: THREE.Scene, s: Extract<SketchShape, { type: "stamp" }>, mapH: number) {
+  // A stamp's SVG bounding box in the editor is a size×size square centered on
+  // (s.x, s.y). We mirror that footprint in 3D so what the user sees on the
+  // canvas matches what appears in the preview.
+  //
+  // Layer heights (Y is up):
+  //   floor tile ......... y = 0.1  (drawn by buildShapes for rooms/rects)
+  //   water surface ...... y = 0.6  (below the base tile so lakes read as water)
+  //   base tile .......... y = 1.0  (thin colored disc that anchors the stamp)
+  //   wall / door body ... base at y = 1.2, extruded upward
+  //   props .............. rest on base tile (y = 1.0 + height/2)
   const cx = s.x, cz = mapH - s.y;
   const size = s.size;
+  const half = size / 2;
   const color = new THREE.Color(s.color || "#2b2b2b");
   const kind = s.kind;
-  // Category → geometry
+
+  const group = new THREE.Group();
+  group.position.set(cx, 0, cz);
+
+  // Every stamp gets a footprint disc so its "layer" is visually explicit and
+  // its origin matches the SVG center exactly.
+  const isFloorLayer = kind.startsWith("lake") || kind === "pond" || kind === "river" || kind === "waterfall" || kind === "elem-water" || kind === "elem-air" || kind === "elem-storm" || kind === "compass" || kind === "scale-bar";
+  if (!isFloorLayer) {
+    const tile = new THREE.Mesh(
+      new THREE.PlaneGeometry(size, size),
+      new THREE.MeshStandardMaterial({ color: 0xece2c6, roughness: 1, transparent: true, opacity: 0.45 }),
+    );
+    tile.rotation.x = -Math.PI / 2;
+    tile.position.y = 1.0;
+    tile.receiveShadow = true;
+    group.add(tile);
+  }
+
+  const add = (mesh: THREE.Object3D) => { mesh.castShadow = true; group.add(mesh); };
+
   if (kind.startsWith("wall-")) {
-    const g = new THREE.BoxGeometry(size, 60, size * 0.35);
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x7a6a4a, roughness: 0.95 }));
-    m.position.set(cx, 30, cz); m.castShadow = true; scene.add(m); return;
-  }
-  if (kind.startsWith("door")) {
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(size, 80, 6), new THREE.MeshStandardMaterial({ color: 0x5a3d1e }));
-    frame.position.set(cx, 40, cz); scene.add(frame);
-    const knob = new THREE.Mesh(new THREE.SphereGeometry(3), new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.8, roughness: 0.3 }));
-    knob.position.set(cx + size * 0.3, 40, cz + 4); scene.add(knob); return;
-  }
-  if (kind.startsWith("lake") || kind === "pond" || kind === "river" || kind === "waterfall" || kind === "elem-water") {
-    const g = new THREE.CircleGeometry(size / 2, 32);
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x2a6ba8, roughness: 0.2, metalness: 0.4, transparent: true, opacity: 0.85 }));
-    m.rotation.x = -Math.PI / 2; m.position.set(cx, 1, cz); scene.add(m); return;
-  }
-  if (kind.startsWith("bridge")) {
-    const g = new THREE.BoxGeometry(size * 1.4, 6, size * 0.5);
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: kind === "bridge-rock" || kind === "bridge-arch" ? 0x8a8a8a : 0x8b5a2b }));
-    m.position.set(cx, 8, cz); scene.add(m); return;
-  }
-  if (kind === "elem-fire") {
-    const g = new THREE.ConeGeometry(size / 3, size, 16);
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0xff6a1a, emissive: 0xff3a00, emissiveIntensity: 0.9 }));
-    m.position.set(cx, size / 2, cz); scene.add(m);
-    const light = new THREE.PointLight(0xff8040, 1.2, size * 4); light.position.set(cx, size, cz); scene.add(light); return;
-  }
-  if (kind === "elem-earth") {
-    const g = new THREE.DodecahedronGeometry(size / 2);
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x8b6a3b, roughness: 1 }));
-    m.position.set(cx, size / 2, cz); scene.add(m); return;
-  }
-  if (kind === "elem-air" || kind === "elem-storm") {
-    const g = new THREE.TorusGeometry(size / 2, size / 10, 12, 32);
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: kind === "elem-storm" ? 0x6a4aa8 : 0xa8c8e0, transparent: true, opacity: 0.7 }));
-    m.rotation.x = -Math.PI / 2; m.position.set(cx, size / 2, cz); scene.add(m); return;
-  }
-  if (kind === "pillar") {
-    const g = new THREE.CylinderGeometry(size / 3, size / 3, size * 1.6, 16);
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0xcfc7b3 }));
-    m.position.set(cx, size * 0.8, cz); m.castShadow = true; scene.add(m); return;
-  }
-  if (kind === "stairs-up" || kind === "stairs-down") {
+    // 2D: a size×size square filled as wall. 3D: full-footprint block that
+    // stands from the base tile upward.
+    const wallH = size * 0.9;
+    const m = new THREE.Mesh(
+      new THREE.BoxGeometry(size, wallH, size),
+      new THREE.MeshStandardMaterial({ color: kind === "wall-brick" ? 0x9a5a3a : kind === "wall-rubble" ? 0x6a5a4a : 0x7a6a4a, roughness: 0.95 }),
+    );
+    m.position.y = 1.2 + wallH / 2;
+    add(m);
+  } else if (kind.startsWith("door")) {
+    // 2D door spans width = size, height = size*0.3 across the doorway.
+    const doorH = size * 0.9;
+    const frame = new THREE.Mesh(
+      new THREE.BoxGeometry(size, doorH, size * 0.15),
+      new THREE.MeshStandardMaterial({ color: kind === "door-iron" || kind === "door-vault" ? 0x555555 : 0x5a3d1e, metalness: kind === "door-iron" ? 0.6 : 0, roughness: 0.7 }),
+    );
+    frame.position.y = 1.2 + doorH / 2;
+    add(frame);
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(size * 0.05), new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.8, roughness: 0.3 }));
+    knob.position.set(size * 0.3, 1.2 + doorH / 2, size * 0.09);
+    group.add(knob);
+  } else if (kind.startsWith("lake") || kind === "pond" || kind === "river" || kind === "waterfall" || kind === "elem-water") {
+    // Water fills the footprint at its own low layer (below base tile height).
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(size, size),
+      new THREE.MeshStandardMaterial({ color: 0x2a6ba8, roughness: 0.2, metalness: 0.5, transparent: true, opacity: 0.85 }),
+    );
+    m.rotation.x = -Math.PI / 2;
+    m.position.y = 0.6;
+    group.add(m);
+  } else if (kind.startsWith("bridge")) {
+    // Bridge deck spans exactly `size` across its footprint.
+    const deck = new THREE.Mesh(
+      new THREE.BoxGeometry(size, size * 0.08, size * 0.6),
+      new THREE.MeshStandardMaterial({ color: kind === "bridge-rock" || kind === "bridge-arch" ? 0x8a8a8a : 0x8b5a2b, roughness: 0.85 }),
+    );
+    deck.position.y = 1.2 + size * 0.04;
+    add(deck);
+  } else if (kind === "elem-fire") {
+    const flame = new THREE.Mesh(
+      new THREE.ConeGeometry(size * 0.33, size * 0.9, 16),
+      new THREE.MeshStandardMaterial({ color: 0xff6a1a, emissive: 0xff3a00, emissiveIntensity: 0.9 }),
+    );
+    flame.position.y = 1.0 + size * 0.45;
+    add(flame);
+    const light = new THREE.PointLight(0xff8040, 1.2, size * 4);
+    light.position.y = size;
+    group.add(light);
+  } else if (kind === "elem-earth") {
+    const m = new THREE.Mesh(new THREE.DodecahedronGeometry(size * 0.4), new THREE.MeshStandardMaterial({ color: 0x8b6a3b, roughness: 1 }));
+    m.position.y = 1.0 + size * 0.4;
+    add(m);
+  } else if (kind === "elem-air" || kind === "elem-storm") {
+    const t = new THREE.Mesh(
+      new THREE.TorusGeometry(size * 0.4, size * 0.06, 12, 32),
+      new THREE.MeshStandardMaterial({ color: kind === "elem-storm" ? 0x6a4aa8 : 0xa8c8e0, transparent: true, opacity: 0.75 }),
+    );
+    t.rotation.x = -Math.PI / 2;
+    t.position.y = 1.0 + size * 0.4;
+    group.add(t);
+  } else if (kind === "pillar") {
+    // 2D pillar is a circle of diameter=size. 3D column matches that diameter.
+    const m = new THREE.Mesh(
+      new THREE.CylinderGeometry(half * 0.85, half * 0.85, size * 1.4, 20),
+      new THREE.MeshStandardMaterial({ color: 0xcfc7b3 }),
+    );
+    m.position.y = 1.2 + size * 0.7;
+    add(m);
+  } else if (kind === "stairs-up" || kind === "stairs-down") {
     const steps = 6;
     for (let i = 0; i < steps; i++) {
-      const g = new THREE.BoxGeometry(size, 6, size / steps);
+      const g = new THREE.BoxGeometry(size, size * 0.08, size / steps);
       const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x9a8a6a }));
-      const h = kind === "stairs-up" ? (i + 1) * 6 : (steps - i) * 6;
-      m.position.set(cx, h / 2, cz - size / 2 + (i + 0.5) * (size / steps));
-      scene.add(m);
+      const level = kind === "stairs-up" ? (i + 1) : (steps - i);
+      const stepH = size * 0.08;
+      m.position.set(0, 1.0 + level * stepH - stepH / 2, -half + (i + 0.5) * (size / steps));
+      add(m);
     }
-    return;
-  }
-  if (kind === "spiral-stairs") {
+  } else if (kind === "spiral-stairs") {
     for (let i = 0; i < 10; i++) {
       const a = (i / 10) * Math.PI * 2;
-      const g = new THREE.BoxGeometry(size / 2, 5, size / 6);
-      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x9a8a6a }));
-      m.position.set(cx + Math.cos(a) * size / 3, (i + 1) * 6, cz + Math.sin(a) * size / 3);
-      m.rotation.y = -a; scene.add(m);
+      const stepH = size * 0.07;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(size * 0.45, stepH, size * 0.18), new THREE.MeshStandardMaterial({ color: 0x9a8a6a }));
+      m.position.set(Math.cos(a) * size * 0.28, 1.0 + (i + 1) * stepH, Math.sin(a) * size * 0.28);
+      m.rotation.y = -a;
+      add(m);
     }
-    return;
+  } else if (kind === "treasure") {
+    const chest = new THREE.Mesh(new THREE.BoxGeometry(size * 0.7, size * 0.4, size * 0.5), new THREE.MeshStandardMaterial({ color: 0x6a3a1a, roughness: 0.8 }));
+    chest.position.y = 1.0 + size * 0.2;
+    add(chest);
+    const lid = new THREE.Mesh(
+      new THREE.SphereGeometry(size * 0.35, 20, 10, 0, Math.PI),
+      new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.8, roughness: 0.3 }),
+    );
+    lid.position.y = 1.0 + size * 0.4;
+    lid.rotation.x = -Math.PI / 2;
+    lid.scale.z = 0.5 / 0.35; // stretch to chest depth
+    group.add(lid);
+  } else if (kind === "monster" || kind === "trap") {
+    const m = new THREE.Mesh(
+      new THREE.ConeGeometry(half * 0.75, size * 0.9, kind === "trap" ? 3 : 5),
+      new THREE.MeshStandardMaterial({ color: kind === "trap" ? 0xa83030 : 0x603060, emissive: kind === "trap" ? 0x400000 : 0x200030, emissiveIntensity: 0.35 }),
+    );
+    m.position.y = 1.0 + size * 0.45;
+    add(m);
+  } else if (kind === "compass" || kind === "scale-bar") {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(half, half, 2, 24), new THREE.MeshStandardMaterial({ color: 0xf0e6c8 }));
+    m.position.y = 0.7;
+    group.add(m);
+  } else {
+    const cap = new THREE.Mesh(
+      new THREE.SphereGeometry(size * 0.4, 16, 16),
+      new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.2 }),
+    );
+    cap.position.y = 1.0 + size * 0.4;
+    add(cap);
   }
-  if (kind === "treasure") {
-    const g = new THREE.BoxGeometry(size * 0.7, size * 0.5, size * 0.5);
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x6a3a1a }));
-    m.position.set(cx, size * 0.25, cz); scene.add(m);
-    const lid = new THREE.Mesh(new THREE.SphereGeometry(size * 0.35, 16, 8, 0, Math.PI), new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.8, roughness: 0.3 }));
-    lid.position.set(cx, size * 0.5, cz); lid.rotation.x = -Math.PI / 2; scene.add(lid); return;
-  }
-  if (kind === "monster" || kind === "trap") {
-    const g = new THREE.ConeGeometry(size / 2, size, 4);
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: kind === "trap" ? 0xa83030 : 0x603060 }));
-    m.position.set(cx, size / 2, cz); scene.add(m); return;
-  }
-  if (kind === "compass" || kind === "scale-bar") {
-    const g = new THREE.CylinderGeometry(size / 2, size / 2, 3, 24);
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0xf0e6c8 }));
-    m.position.set(cx, 2, cz); scene.add(m); return;
-  }
-  // Fallback marker: colored capsule
-  const cap = new THREE.Mesh(new THREE.SphereGeometry(size / 2.5, 16, 16), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.2 }));
-  cap.position.set(cx, size / 2.5, cz); scene.add(cap);
+
+  scene.add(group);
 }
