@@ -1,5 +1,6 @@
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { Node, mergeAttributes } from "@tiptap/core";
 import TextAlign from "@tiptap/extension-text-align";
 import Link from "@tiptap/extension-link";
 import { Image } from "@tiptap/extension-image";
@@ -28,6 +29,7 @@ import {
   Pen, PenTool, Brush, Minus, Feather, Wand2, Languages, Save, Printer, FileText, Home as HomeIcon,
   Plus, Palette, Layout as LayoutIcon, BookOpen, Eye, Maximize2, Minimize2, Youtube, Sigma, Search,
   Mic, Square, Upload, Music as MusicIcon, Rainbow,
+  Volume2, VolumeX,
 } from "lucide-react";
 import type { PenType } from "@/components/DrawOverlay";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -36,6 +38,72 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Label } from "@/components/ui/label";
 import { DocStatsBadge } from "@/components/DocStatsBadge";
 import { usePlayer } from "@/components/player/PlayerContext";
+
+// Custom Tiptap node for embedded voice recordings and speech playback blocks.
+// Registered in the schema so <audio> survives serialization/parse round-trips
+// (default StarterKit strips unknown tags — that was the "only a few seconds
+// were written" bug: the audio element was silently removed on insert).
+const VoiceBlock = Node.create({
+  name: "voiceBlock",
+  group: "block",
+  atom: true,
+  draggable: true,
+  selectable: true,
+  addAttributes() {
+    return {
+      src: { default: "" },
+      duration: { default: 0 },
+      label: { default: "ضبط صدا" },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "div[data-voice-block]" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    const src = String(HTMLAttributes.src ?? "");
+    const duration = Number(HTMLAttributes.duration ?? 0);
+    const label = String(HTMLAttributes.label ?? "ضبط صدا");
+    return [
+      "div",
+      mergeAttributes(
+        {
+          "data-voice-block": "",
+          class: "voice-block",
+          contenteditable: "false",
+          draggable: "true",
+          style:
+            "display:flex;align-items:center;gap:.75rem;padding:.6rem .85rem;margin:.6rem 0;border:1px solid hsl(var(--border));border-radius:14px;background:linear-gradient(135deg,rgba(201,169,74,.10),rgba(122,63,191,.10));direction:ltr;",
+        },
+        { "data-src": src, "data-duration": String(duration), "data-label": label }
+      ),
+      [
+        "span",
+        {
+          style:
+            "font-size:11px;font-weight:600;opacity:.8;white-space:nowrap;direction:rtl;",
+        },
+        label,
+      ],
+      [
+        "audio",
+        {
+          controls: "true",
+          preload: "metadata",
+          src,
+          style: "height:38px;flex:1;min-width:220px;",
+        },
+      ],
+      [
+        "span",
+        {
+          style:
+            "font-size:11px;opacity:.7;font-variant-numeric:tabular-nums;white-space:nowrap;",
+        },
+        `${Math.max(1, Math.round(duration))}s`,
+      ],
+    ];
+  },
+});
 
 export function getEditorExtensions() {
   return [
@@ -51,6 +119,7 @@ export function getEditorExtensions() {
     TaskList,
     TaskItem.configure({ nested: true }),
     Subscript, Superscript,
+    VoiceBlock,
   ];
 }
 
@@ -151,6 +220,7 @@ export function EditorToolbar({ editor, onAi, aiLoading, pencil, onToolUse, tool
   const [textDir, setTextDir] = useState<"rtl" | "ltr">("rtl");
   const [tab, setTab] = useState<RibbonTab>("home");
   const [recording, setRecording] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -236,16 +306,16 @@ export function EditorToolbar({ editor, onAi, aiLoading, pencil, onToolUse, tool
   };
 
   const insertVoiceBlock = (dataUrl: string, durationSec: number) => {
-    // Draggable audio block. contenteditable=false so tiptap treats it atomically;
-    // draggable=true lets the user move it anywhere in the doc.
-    const bars = Array.from({ length: 40 }, () => 20 + Math.round(Math.random() * 70));
-    const barsHtml = bars.map((h) => `<span style="display:inline-block;width:3px;margin-inline:1px;height:${h}%;background:linear-gradient(180deg,#c9a94a,#7a3fbf);border-radius:2px;"></span>`).join("");
-    const html = `<div class="voice-block" data-voice="1" contenteditable="false" draggable="true" style="display:flex;align-items:center;gap:.75rem;padding:.5rem .75rem;margin:.5rem 0;border:1px solid hsl(var(--border));border-radius:12px;background:linear-gradient(135deg,rgba(201,169,74,.08),rgba(122,63,191,.08));cursor:grab;">
-      <audio controls src="${dataUrl}" style="height:32px;flex-shrink:0;"></audio>
-      <div style="display:flex;align-items:flex-end;height:28px;flex:1;min-width:120px;">${barsHtml}</div>
-      <span style="font-size:11px;opacity:.7;font-variant-numeric:tabular-nums;">${Math.round(durationSec)}s</span>
-    </div><p></p>`;
-    editor.chain().focus().insertContent(html).run();
+    // Insert as a proper schema node so the <audio> element survives — HTML
+    // strings with unknown tags get stripped by the ProseMirror parser.
+    editor
+      .chain()
+      .focus()
+      .insertContent([
+        { type: "voiceBlock", attrs: { src: dataUrl, duration: durationSec, label: "🎙️ ضبط صدا" } },
+        { type: "paragraph" },
+      ])
+      .run();
   };
 
   const startRecording = async () => {
@@ -295,6 +365,82 @@ export function EditorToolbar({ editor, onAi, aiLoading, pencil, onToolUse, tool
       hue: 280,
     });
   };
+
+  // Detect the dominant script/language of a text so speech synthesis picks
+  // the right voice. Falls back to English for Latin-only text.
+  const detectLang = (t: string): string => {
+    if (/[\u0600-\u06FF]/.test(t)) {
+      return /[\u067E\u0686\u0698\u06AF\u06CC\u06A9]/.test(t) ? "fa-IR" : "ar-SA";
+    }
+    if (/[\u3040-\u30FF]/.test(t)) return "ja-JP";
+    if (/[\uAC00-\uD7AF]/.test(t)) return "ko-KR";
+    if (/[\u4E00-\u9FFF]/.test(t)) return "zh-CN";
+    if (/[\u0400-\u04FF]/.test(t)) return "ru-RU";
+    if (/[\u0590-\u05FF]/.test(t)) return "he-IL";
+    if (/[\u0370-\u03FF]/.test(t)) return "el-GR";
+    if (/\b(bonjour|merci|voici|c'est|nous|vous)\b/i.test(t)) return "fr-FR";
+    if (/\b(hola|gracias|buenos|cómo|está|usted)\b/i.test(t)) return "es-ES";
+    if (/\b(guten|danke|bitte|nicht|wie|geht)\b/i.test(t)) return "de-DE";
+    return "en-US";
+  };
+
+  const pickVoice = (lang: string): SpeechSynthesisVoice | null => {
+    const voices = window.speechSynthesis.getVoices();
+    if (!voices.length) return null;
+    const exact = voices.find((v) => v.lang.toLowerCase() === lang.toLowerCase());
+    if (exact) return exact;
+    const base = lang.split("-")[0].toLowerCase();
+    return voices.find((v) => v.lang.toLowerCase().startsWith(base)) ?? null;
+  };
+
+  const speakText = () => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      return;
+    }
+    if (speaking) {
+      window.speechSynthesis.cancel();
+      setSpeaking(false);
+      return;
+    }
+    const { from, to, empty } = editor.state.selection;
+    const text = (empty ? editor.state.doc.textContent : editor.state.doc.textBetween(from, to, " ")).trim();
+    if (!text) return;
+    const lang = detectLang(text);
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = lang;
+    const voice = pickVoice(lang);
+    if (voice) utter.voice = voice;
+    utter.rate = 1;
+    utter.pitch = 1;
+    utter.volume = 1;
+    utter.onend = () => setSpeaking(false);
+    utter.onerror = () => setSpeaking(false);
+    window.speechSynthesis.cancel();
+    // Voices may load async; if empty on first call, wait once and retry.
+    if (!window.speechSynthesis.getVoices().length) {
+      window.speechSynthesis.addEventListener(
+        "voiceschanged",
+        () => {
+          const v = pickVoice(lang);
+          if (v) utter.voice = v;
+          window.speechSynthesis.speak(utter);
+          setSpeaking(true);
+        },
+        { once: true }
+      );
+    } else {
+      window.speechSynthesis.speak(utter);
+      setSpeaking(true);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   const applyGradientToSelection = (grad: string) => {
     if (!editor) return;
@@ -576,6 +722,20 @@ export function EditorToolbar({ editor, onAi, aiLoading, pencil, onToolUse, tool
           ref={audioInputRef} type="file" accept="audio/*" className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) onAudioFile(f); e.currentTarget.value = ""; }}
         />
+        <Separator orientation="vertical" className="h-6 mx-1" />
+        <Button
+          type="button"
+          variant={speaking ? "destructive" : "ghost"}
+          size="sm"
+          className="h-8 gap-1.5"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={speakText}
+          title={speaking ? "توقف خواندن" : "🗣️ خواندن متن انتخاب‌شده (یا کل سند) — تشخیص خودکار زبان"}
+        >
+          <span className="text-base leading-none">🗣️</span>
+          {speaking ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+          <span className="text-xs">{speaking ? "توقف" : "بخوان"}</span>
+        </Button>
         <Separator orientation="vertical" className="h-6 mx-1" />
         <Btn title="جعبه متن" onClick={insertTextBox}><Type className="h-4 w-4" /></Btn>
         <Btn title="خط جداکننده" onClick={insertHR}><Minus className="h-4 w-4" /></Btn>
